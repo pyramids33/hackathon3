@@ -1,0 +1,36 @@
+
+
+Database
+
+hdkey
+name,index,datecreated
+
+address
+address,index,datecreated,txype
+
+txos
+txid,index,amount,spenttx
+
+tx
+txid,txtype,dateadded,status,merkleproof
+
+-------
+
+init
+    insert hdkey from random
+
+get_address (txtype)
+    generate address from hdkey
+
+add_tx (txtype)
+    insert into tx
+    insert into txos
+    mark txos spent
+
+-------
+
+call get address (fundingtx)
+create tx spending to address
+call add tx 
+    check outputs matching to known addresses
+    accept or reject
