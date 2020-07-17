@@ -8,6 +8,11 @@ let config = {
         database: 'hackathon3',
         password: 'hackathonxdse',
         port: 5432,
-    }
+    },
+    host: 'localhost',
+    port: 6767,
+    env: 'dev',
+    tempPath: path.resolve(__dirname, '../data/temp/'),
+    storagePath: path.resolve(__dirname, '../data/storage/')
 };
 module.exports = config;

@@ -10,7 +10,9 @@
   "author": "",
   "dependencies": {
     "bsv": "^1.5.3",
+    "busboy": "^0.3.1",
     "express": "^4.17.1",
+    "form-data": "^3.0.0",
     "moment": "^2.27.0",
     "pg": "^8.2.1"
   }

@@ -140,7 +140,7 @@ async function addTransaction (db, txhex, txtype) {
         tx2.sign('L4XFTBUFbW7n4rwF6RrMgzQX4ttJX7biNRRFfQ4frCzNUNnSkXho');
 
         //console.log(tx2.toString())
-        await addTransaction(db, tx2.toString());
+        await addTransaction(db, tx2.toString(), 'funding');
 
         console.table((await pool.query(`select * from txoutputs`)).rows);
         console.table((await pool.query(`select * from transactions`)).rows);
