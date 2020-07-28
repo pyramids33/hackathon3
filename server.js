@@ -2,91 +2,13 @@
 const { Pool } = require('pg');
 const express = require('express');
 const fs = require('fs');
-const { promisify } = require('util');
-const fs_rename = promisify(fs.rename);
-const bsv = require('bsv');
-const bsvMessage = require('bsv/message');
-const path = require('path');
-const moment = require('moment');
 
 const config = require('./config.js');
 const Database = require('./database.js');
 const multipartReader = require('./multipartReader.js');
-
-function validateMessage (req, res, next) {
-
-    if (req.message === undefined) {
-        res.status(200).json({ error: 'EMPTY_MESSAGE' });
-        return;
-    }
-
-    let validId = /^[a-zA-Z0-9]+$/.test(req.message.messageid);
-                
-    if (!validId) {
-        res.status(200).json({ error: 'INVALID_MESSAGE_ID' });
-        return;
-    }
-
-    try {
-        let validSig = new bsvMessage(req.body.message).verify(req.message.sender, req.body.sig);
-        
-        if (!validSig) {
-            res.status(200).json({ error: 'INVALID_SIGNATURE' });
-            return;
-        }
-    } catch (error) {
-        res.status(200).json({ error: 'INVALID_SIGNATURE' });
-        return;
-    }
-
-    let validTimestamp = moment(req.message.timestamp, moment.ISO_8601, true).isValid();
-
-    if (!validTimestamp) {
-        res.status(200).json({ error: 'INVALID_TIMESTAMP' });
-        return;
-    }
-
-    next();
-}
-
-const asyncHandler = function (fn) {
-    return function (req, res, next) {
-        Promise.resolve(fn(req, res, next)).catch(function (error) {
-            console.log(error.stack); 
-            next(error);
-        });
-    }
-}
-
-let saveMessage = asyncHandler(async function (req, res, next) {
-
-    let { db, config } = req.app.get('context');
-
-    let storagepath = path.resolve(config.storagePath, req.message.messageid + '.bin');
-
-    let qparams = { 
-        messageid: req.message.messageid, 
-        tag: req.message.tag,
-        subject: req.message.subject, 
-        sender: req.message.sender, 
-        timestamp: req.message.timestamp, 
-        messagestring: req.body.message, 
-        sig: req.body.sig
-    };
-
-    await db.messages.addMessage(qparams, async function () {
-        if (req.files['filedata']) {
-            await fs_rename(req.files['filedata'].file, storagepath);
-        }
-    });
-
-    //await db.messages.hashTag({ tag: req.message.tag });
-
-    res.status(200).end();
-    //next();
-});
-
-
+const message = require('./message.js');
+const payment = require('./payment.js');
+const asyncHandler = require('./asynchandler.js');
 
 if (process.argv.length > 2) {
     Object.assign(config, JSON.parse(fs.readFileSync(process.argv[2])));
@@ -115,17 +37,97 @@ if (config.env != 'dev') {
 
 app.set('context', { db, config });
 
-app.post('', readMultipart, validateMessage, saveMessage);
+app.use(express.static('site'));
+
+// cli user
+// just use a keypair and create the signed json messages
+
+// web user
+// let user login to the static site with cookie/token/paymail
+// the static pages can create the signed json messages and post them 
+
+// static pages
+// login.html
+// form.html
+// tag.html
+
+let tagData = asyncHandler(async function (req, res) {
+
+    let { db } = req.app.get('context');
+    
+    if (req.message.query === undefined) {
+        res.status(200).json({ error: 'INVALID_QUERY' });
+    }
+    
+    let info = await db.messages.tagPageInfo(req.message.tag);
+    
+    if (info === undefined) {
+        res.status(200).end();
+        return;
+    }
+
+    let hasAccess = (await db.payments.hasAccess(req.message.sender, req.message.tag))||false;
+    
+    if (!hasAccess) {
+        return payment.requirePayment(req, res, info);
+    }
+
+    let rows = await db.messages.tagPageData(
+        req.message.query.tag, parseInt(req.message.query.from)||1, 50);
+    
+    rows.forEach(function (row) {
+        res.write(JSON.stringify(row)+'\n');
+    });
+    
+    res.end();
+});
+
+let tagInfo = asyncHandler(async function (req,res) {
+    
+    if (req.message.query === undefined) {
+        res.status(200).json({ error: 'INVALID_QUERY' });
+    }
+
+    let tag = req.message.query.tag;
+    let info = await db.messages.tagPageInfo(tag);
+    res.json(info).end();
+});
+
+const handleMessage = asyncHandler(async function (req, res, next) {
+    if (req.message.tag === 'api') {
+        let actions = {
+            'tagdata': tagData,
+            'taginfo': tagInfo,
+            'payinvoice': payment.payInvoice
+        }
+
+        if (req.message.subject && actions[req.message.subject]) {
+            return actions[req.message.subject](req, res, next);
+        }
+    } else {
+        res.status(200).json({})
+    }
+});
+
+app.post('', readMultipart, message.validateMessage, message.saveMessage, handleMessage);
 
 (async function () {
     try {
         await db.initSchemas();
 
-        app.listen(config.port, config.host, function () {
+        let server = app.listen(config.port, config.host, function () {
             console.log(`Listening ${config.host}:${config.port}!`);
+        });
+        server.on('error', function (err) {
+            console.log(err.stack);
+            pool.end(function () {});
+        });
+        server.on('close', function (err) {
+            pool.end(function () {});
         });
     } catch (err) {
         console.log(err.stack);
+        await pool.end();
     }
 })();
 

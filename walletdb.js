@@ -12,6 +12,7 @@ function WalletDb (pool) {
             
             create table if not exists transactions (id serial primary key, txid text, txtype text, 
                 datecreated text, status text, merkleproof text); 
+                
             create unique index if not exists transactions_txid on transactions(txid);
 
             create table if not exists txoutputs (id serial primary key, txid text, index text, amount text, spenttxid text); 

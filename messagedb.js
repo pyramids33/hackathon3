@@ -9,7 +9,7 @@ function MessageDb (pool) {
     function initSchema () {
         return pool.query(`
             create table if not exists messages (id bigserial primary key, 
-                messageid text, tag text, index int, subject text, sender text, timestamp text, messagestring text, sig text);
+                messageid text, tag text, index int, subject text, sender text, timestamp text, message bytea, sig bytea, taghash bytea);
 
             create table if not exists taghashes (tag text primary key, index int, hash bytea);
 
@@ -38,7 +38,7 @@ function MessageDb (pool) {
                 hash.update(Buffer.from(messagestring));
                 hash = hash.digest('hex');
 
-                let tagHash = pluckRow(await client.query(`
+                let taghash = pluckRow(await client.query(`
                     insert into taghashes (tag,index,hash)
                     values ($1, 1, decode($2,'hex'))
                     on conflict (tag) do 
@@ -49,9 +49,9 @@ function MessageDb (pool) {
                     [ tag, hash, hash ] ));
 
                 let pgResult = await client.query(`
-                    insert into messages (messageid,tag,index,subject,sender,timestamp,messagestring,sig)
-                    values ($1,$2,$3,$4,$5,$6,$7,$8);`,
-                    [ messageid, tag, tagHash.index, subject, sender, timestamp, messagestring, sig ]);
+                    insert into messages (messageid,tag,index,subject,sender,timestamp,message,sig,taghash)
+                    values ($1,$2,$3,$4,$5,$6,$7,decode($8,'hex'),decode($9,'hex'));`,
+                    [ messageid, tag, taghash.index, subject, sender, timestamp, messagestring, sig, taghash.hash.toString('hex') ]);
 
                 if (beforeCommit) {
                     await beforeCommit(client);
@@ -67,10 +67,30 @@ function MessageDb (pool) {
         });
     }
 
+    async function tagPageData (tag, from, limit) {
+        let queryarg = {
+            text: `
+                select messageid,tag,index,subject,sender,timestamp,encode(taghash,'hex')
+                from messages 
+                where tag = $1 and index >= $2
+                order by tag,index limit ${limit};`,
+            values: [ tag, from ],
+            rowMode: 'array'
+        };
+        return (await pool.query(queryarg)).rows;
+    }
+
+    async function tagPageInfo (tag) {
+        return pluckRow(await pool.query(`
+            select tag,index,encode(hash,'hex') as taghash from taghashes where tag = $1;`, [tag]));
+    }
+
     return {
         initSchema,
         dropSchema,
-        addMessage
+        addMessage,
+        tagPageData,
+        tagPageInfo
     }
 }
 

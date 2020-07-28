@@ -13,6 +13,7 @@ let config = {
     port: 6767,
     env: 'dev',
     tempPath: path.resolve(__dirname, '../data/temp/'),
-    storagePath: path.resolve(__dirname, '../data/storage/')
+    storagePath: path.resolve(__dirname, '../data/storage/'),
+    mapiUrl: 'https://merchantapi.matterpool.io/mapi/'
 };
 module.exports = config;

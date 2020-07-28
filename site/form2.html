@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>test send</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.4.1/css/bootstrap-reboot.min.css">
+</head>
+<body>
+
+<div class="content width-sm">
+    <form id="theform">
+        <textarea id="mytext" name="mytext">my text goes here</textarea><br>
+        <div id="sendermb"></div><br>
+        <div>
+        <input type="hidden" id="sender" value="">
+        <input type="hidden" id="paymail" value="">
+        <input type="submit" id="submit" value="submit">
+        </div>
+    </form>
+    <br>
+    <div id="moneybutton"></div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.4.1.min.js" integrity="sha256-CSXorXvZcTkaix6Yvo6HppcZGetbYMGWSFlBw8HfCJo=" crossorigin="anonymous"></script>
+<script src='https://www.moneybutton.com/moneybutton.js'></script>
+<script src='https://unpkg.com/bsv@0.30.0/bsv.min.js'></script>
+<script>
+$(function () {
+
+    var $mb = $('#moneybutton');
+    var $mbsender = $('#sendermb');
+
+    $('#theform').prop('disabled', true);
+
+    moneyButton.render($mbsender[0], {
+        type: 'buy',
+        label: 'Identity',
+        cryptoOperations: [
+            {
+                name: 'myAddress',
+                method: 'address'
+            }
+        ],
+        onCryptoOperations: (cryptoOperations) => {
+            console.log(cryptoOperations)
+            $('#theform').prop('disabled', true);
+            $('#sender').val(cryptoOperations[0].value);
+            $('#paymail').val(cryptoOperations[0].paymail);
+            $mbsender.text('Sender: ' + cryptoOperations[0].paymail + ' (' + cryptoOperations[0].value + ') ');
+        },
+        onError: function (arg) { 
+            console.log(arg);
+        }
+    });
+
+    $('#theform').on('submit', function (event) {
+        event.preventDefault();
+
+        var data = {};
+        data.mytext = $('#mytext').val();
+        data.messageid = new Date().valueOf().toString() + Math.random().toFixed(16).slice(2);
+        data.subject = "test form";
+        data.timestamp = new Date().toISOString();
+        data.tag = 'forms';
+        data.sender = $('#sender').val();
+        data.paymail = $('#paymail').val();
+
+        var message = JSON.stringify(data);
+
+        moneyButton.render($mb[0], {
+            type: 'buy',
+            label: 'sign and send',
+            cryptoOperations: [
+                {
+                    name: 'mySignature',
+                    method: 'sign',
+                    data: message,
+                    dataEncoding: 'utf8',
+                    key: 'identity',
+                    algorithm: 'bitcoin-signed-message'
+                }
+            ],
+            onCryptoOperations: function (cryptoOperations) {
+                console.log(cryptoOperations);
+                sendMessage(cryptoOperations[0].data, cryptoOperations[0].value);
+            },
+            onError: function (arg) { 
+                console.log(arg);
+            }
+        });
+
+    });
+
+    function sendMessage (message, sig) {
+        var formdata = new FormData();
+        formdata.append('message',message);
+        formdata.append('sig',sig);
+
+        $.ajax({
+            url: 'http://localhost:6767',
+            data: formdata,
+            cache: false,
+            contentType: false,
+            processData: false,
+            method: 'POST',
+            success: function(data,data2){
+                console.log(data,data2)
+            },
+            error: function (err) {
+                console.log(err);
+            }
+        });
+    }
+
+});
+</script>
+
+</body>
+</html>
