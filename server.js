@@ -59,14 +59,14 @@ let tagData = asyncHandler(async function (req, res) {
         res.status(200).json({ error: 'INVALID_QUERY' });
     }
     
-    let info = await db.messages.tagPageInfo(req.message.tag);
+    let info = await db.messages.tagPageInfo(req.message.query.tag);
     
     if (info === undefined) {
         res.status(200).end();
         return;
     }
 
-    let hasAccess = (await db.payments.hasAccess(req.message.sender, req.message.tag))||false;
+    let hasAccess = (await db.payments.hasAccess(req.message.sender, req.message.query.tag))||false;
     
     if (!hasAccess) {
         return payment.requirePayment(req, res, info);
@@ -98,7 +98,8 @@ const handleMessage = asyncHandler(async function (req, res, next) {
         let actions = {
             'tagdata': tagData,
             'taginfo': tagInfo,
-            'payinvoice': payment.payInvoice
+            'payinvoice': payment.payInvoice,
+            'notifybroadcast': payment.notifyBroadcast
         }
 
         if (req.message.subject && actions[req.message.subject]) {

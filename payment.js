@@ -34,8 +34,8 @@ let requirePayment = async function (req, res, taginfo) {
     });
 
     // maybe good to sign this on the server
-    // console.log([ invoiceid, info.tag + ':' + info.index, info.taghash, req.session.token ])
-    tx.addSafeData([ invoiceid, taginfo.tag, taginfo.index, taginfo.taghash, req.message.sender ]);
+    //console.log([ invoiceid, taginfo.tag, taginfo.index, taginfo.taghash, req.message.sender ])
+    tx.addSafeData([ invoiceid, taginfo.tag, taginfo.index.toString(), taginfo.taghash, req.message.sender ]);
 
     await db.payments.addInvoice({
         invoiceid,
@@ -86,10 +86,48 @@ let payInvoice = asyncHandler(async function (req, res, next) {
         return;
     }
 
+    await db.payments.setPaymentAccepted({ invoiceid: invoice.invoiceid, txid: signedTx.id });
+
     // broadcast
-    let broadcastRes = await axios.post(
-        'https://www.ddpurse.com/openapi/mapi/tx', 
-        { rawtx: signedTx.toString() }, 
+    // let broadcastRes = await axios.post(
+    //     'https://www.ddpurse.com/openapi/mapi/tx', 
+    //     { rawtx: signedTx.toString() }, 
+    //     { headers: { 
+    //         'token': '561b756d12572020ea9a104c3441b71790acbbce95a6ddbf7e0630971af9424b'
+    //     }});
+
+    // let payload = JSON.parse(broadcastRes.data.payload);
+    
+    // if (payload.returnResult === 'failure') {
+    //     res.status(200).json({ error: 'INVALID_TRANSACTION', description: payload.resultDescription });
+    //     return;
+    // }
+
+    // await db.payments.addAccess({ 
+    //     invoiceid, 
+    //     txid: signedTx.id, 
+    //     userid: req.message.sender, 
+    //     created: new Date().toISOString(), 
+    //     tag: invoice.tag,
+    //     index: invoice.index
+    // });
+
+    res.status(200).json({ status: signedTx.id + ' accepted. Let me know when the tx is broadcast.'});
+});
+
+let notifyBroadcast = asyncHandler(async function (req, res, next) {
+
+    let { db, config } = req.app.get('context');
+
+    let invoice = await db.payments.getInvoice(req.message.invoiceid)
+
+    if (invoice.status === 'done') {
+        res.status(200).json({ error: 'INVOICE_DONE' });
+        return;
+    }
+    console.log(invoice);
+    let broadcastRes = await axios.get(
+        'https://www.ddpurse.com/openapi/mapi/tx/'+invoice.paymenttxid,
         { headers: { 
             'token': '561b756d12572020ea9a104c3441b71790acbbce95a6ddbf7e0630971af9424b'
         }});
@@ -101,21 +139,22 @@ let payInvoice = asyncHandler(async function (req, res, next) {
         return;
     }
 
-    await db.payments.addAccess({ 
-        invoiceid, 
-        txid: signedTx.id, 
-        userid: req.message.sender, 
-        created: new Date().toISOString(), 
-        tag: invoice.tag,
-        index: invoice.index
-    });
+    if (payload.returnResult === 'success') {
+        await db.payments.addAccess({ 
+            invoiceid: invoice.invoiceid,
+            txid: invoice.paymenttxid, 
+            userid: invoice.userid, 
+            created: new Date().toISOString(), 
+            tag: invoice.tag,
+            index: invoice.index
+        });
+    }
 
     res.status(200).end();
 });
 
-
-
 module.exports = {
     requirePayment,
-    payInvoice
+    payInvoice,
+    notifyBroadcast
 };

@@ -1,12 +1,24 @@
 const bsvMessage = require('bsv/message');
 const FormData = require('form-data');
-
+const moment = require('moment');
 function MessageSender (url, privkey) {
 
     function send(args, stream, progress, progressInterval) {
         return new Promise(function (resolve, reject) {
 
             progressInterval = progressInterval||1000;
+
+            if ((args.messageid||'') === '') {
+                args.messageid = new Date().valueOf().toString() 
+                    + Math.random().toFixed(10).slice(2) 
+                    + Math.random().toFixed(10).slice(2);
+            }
+            
+            if ((args.timestamp||'') === '') {
+                args.timestamp = moment().toISOString();
+            }
+
+            args.sender = privkey.toAddress().toString();
 
             let message = JSON.stringify(args);
             let sig = new bsvMessage(message).sign(privkey);

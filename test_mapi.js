@@ -23,6 +23,15 @@ const axios = require('axios').default;
 
         console.log(res.data);
 
+
+        res = await axios.get(
+            'https://www.ddpurse.com/openapi/mapi/tx/29f03d81759addc76618a6ab72caf17ea86845ecfb5d4b70c8ddbd019e59e868',
+            { headers: { 
+                'token': '561b756d12572020ea9a104c3441b71790acbbce95a6ddbf7e0630971af9424b'
+            }});
+
+        console.log(res.data);
+
         // {
         //     payload: '{"apiVersion":"0.1.0","timestamp":"2020-07-27T05:32:06.286Z","returnResult":"failure","resultDescription":"ERROR: No such mempool or blockchain transaction. Use gettransaction for wallet transactions.","blockHash":null,"blockHeight":null,"confirmations":0,"minerId":"0211ccfc29e3058b770f3cf3eb34b0b2fd2293057a994d4d275121be4151cdf087","txSecondMempoolExpiry":0}',
         //     signature: '304502210095e40324497395ad57efeaae17af3b354c702961d803c0db0a64067cc918b9ea02200487d300edd3abd70a44bfcc609790b7c9e983b206f39ff0c4d9cbc75bf68a0b',

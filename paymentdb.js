@@ -28,20 +28,20 @@ function PaymentDb (pool) {
         `);
     }
 
-    function addInvoice ({ invoiceid, spec, datecreated, userid, amount, tag, index, invoicetx }) {
+    function addInvoice ({ invoiceid, spec, created, userid, amount, tag, index, invoicetx }) {
         return pool.query(`
-            insert into invoices (invoiceid, spec, datecreated, userid, amount, tag, index, invoicetx) values ($1,$2,$3,$4,$5,$6,$7,$8);`, 
-            [ invoiceid, spec, datecreated, userid, amount, tag, index, invoicetx ]);
+            insert into invoices (invoiceid, spec, created, userid, amount, tag, index, invoicetx) values ($1,$2,$3,$4,$5,$6,$7,$8);`, 
+            [ invoiceid, spec, created, userid, amount, tag, index, invoicetx ]);
     }
 
-    // function setPaymentTxid ({ invoiceid, txid }) {
-    //     return client.query(`update invoices set paymenttxid = $1, status = 'broadcast' where invoiceid = $2`, [ txid, invoiceid ]),
-    // }
+    function setPaymentAccepted ({ invoiceid, txid }) {
+        return pool.query(`update invoices set paymenttxid = $1, status = 'accepted' where invoiceid = $2`, [ txid, invoiceid ]);
+    }
 
-    function addAccess ({ invoiceid, userid, created, tag, index }) {
+    function addAccess ({ invoiceid, txid, userid, created, tag, index  }) {
         return transaction(function (client) {
             return Promise.all([
-                client.query(`update invoices set paymenttxid = $1, status = 'done' where invoiceid = $2`, [ txid, invoiceid ]),
+                client.query(`update invoices set status = 'done' where invoiceid = $1`, [ invoiceid ]),
                 client.query(`insert into access (txid,userid,created,tag,index) values ($1,$2,$3,$4,$5)`, [ txid, userid, created, tag, index ])
             ]);
         });
@@ -62,9 +62,9 @@ function PaymentDb (pool) {
         dropSchema,
         addInvoice,
         getInvoice,
-        addTransaction,
         addAccess,
-        hasAccess
+        hasAccess,
+        setPaymentAccepted
     }
 }
 module.exports = PaymentDb;
