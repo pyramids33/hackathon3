@@ -12,3 +12,8 @@ example site (moneybutton)
     login/logout
     send messages
     view messages
+
+
+documentation
+video demo
+github account

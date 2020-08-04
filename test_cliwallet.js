@@ -232,7 +232,7 @@ function WalletDb (filename) {
 
                 rowid = utxo.rowid;
 
-                let spendtx = new bsv.Transaction(db.transactionById(utxo.txid));
+                let spendtx = new bsv.Transaction(db.transactionById(utxo.txid).rawtx);
                 let output = spendtx.outputs[utxo.vout];
                 
                 let addressInfo = db.getAddress(output.script.toAddress().toString());

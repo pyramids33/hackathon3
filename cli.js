@@ -6,6 +6,7 @@ const bsv = require('bsv');
 const os = require('os');
 const path = require('path');
 
+const MessageSender = require('./sendmessage.js');
 const WalletDb = require('./cliwalletdb.js');
 
 function loadWallet (dbfile) {
@@ -17,27 +18,56 @@ function loadWallet (dbfile) {
     return WalletDb(dbfile);
 }
 
+
 async function broadcastTx (db, txid) {
+
+    console.log('broadcast', txid);
 
     let tx = db.transactionById(txid);
 
-    if (tx.status = 'processed') {
+    if (tx.status === 'processed') {
 
         let res = await axios.post(
             'https://www.ddpurse.com/openapi/mapi/tx', 
-            { rawtx: tx.toString() }, 
+            { rawtx: tx.rawtx.toString('hex') }, 
             { headers: { 
                 'token': '561b756d12572020ea9a104c3441b71790acbbce95a6ddbf7e0630971af9424b'
             }});
-
+ 
         let payload = JSON.parse(res.data.payload);
         
+        console.log(payload);
+
         if (payload.returnResult === 'failure') {
-            console.log(payload.resultDescription);
-            return;
+            if (payload.resultDescription !== 'ERROR: Transaction already in the mempool') {
+                return false;
+            }
         }
 
-        db.updateTxStatus(tx.id, 'broadcast');
+        db.updateTransactionStatus(txid, 'broadcast');
+        return true;
+    }
+}
+
+async function notifyBroadcast (db, txid, privkey) {
+
+    let inv = db.invoiceTxnById(txid);
+
+    console.log('notify', txid, inv);
+
+    if (inv && inv.notified === null && inv.status === 'broadcast') {
+        
+        let sendMessage = MessageSender(inv.server, privkey);
+
+        res = await sendMessage({
+            tag: 'api',
+            subject: 'notifybroadcast',
+            invoiceid: inv.invoiceid
+        });
+
+        console.log(res.statusCode, res.data);
+
+        db.setInvoiceNotified(txid);
     }
 }
 
@@ -113,7 +143,7 @@ program.command('broadcast ')
     .description('broadcast processed transactions')
     .option('-l, --list', 'list the transactions, dont broadcast them')
     .action (async (cmd) => {
-
+        let db = loadWallet(cmd.parent.target);
         let txns = db.processedTransactions();
         
         if (cmd.list) {
@@ -122,12 +152,21 @@ program.command('broadcast ')
         }
 
         for (let i = 0; i < txns.length; i++) {
-            await broadcastTx(db,txns[i]);
+            await broadcastTx(db,txns[i].txid);
         }
     });
 
+program.command('notifyinvoices')
+    .description('notify invoice payments')
+    .option('-l, --list', 'list the invoices, dont notify')
+    .action (async (cmd) => {
+        // after broadcast
+        // select invoicetxn where status == broadcast and notified null
+        // notify all
+    });
+
 program.command('download <txid>')
-    .description('download a transaction with txid. it will be cached in home directory before added to the db.')
+    .description('download a transaction with txid. it is cached in the home directory.')
     .option('-a, --analyse', 'show changes')
     .option('-p, --process', 'update the wallet with the tx')
     .action (async (txid, cmd) => {
@@ -151,6 +190,71 @@ program.command('download <txid>')
         if (cmd.process) {
             db.addTransaction(txhex, 'broadcast');
         }
+    });
+
+program.command('data <server> <tag> [from]')
+    .description('download data')
+    .option('-p, --pay', 'pay 402 response automatically')
+    .action(async (server, tag, from, cmd) => {
+
+        from = parseInt(from)||1;
+
+        let db = loadWallet(cmd.parent.target);
+        let privkey = db.identityKey();
+        let sendMessage = MessageSender(server, privkey);
+
+        let res = await sendMessage({
+            tag: 'api',
+            subject: 'tagdata',
+            query: {
+                tag: tag,
+                from: from
+            }
+        });
+
+        if (res.statusCode === 200) {
+            console.log(res.data);
+            return;
+        }
+
+        if (res.statusCode !== 402) {
+            console.log(res.statusCode, res.data);
+            return;
+        }
+
+        let data = JSON.parse(res.data);
+
+        if (!cmd.pay) {
+            console.log(data);
+            return;
+        }
+
+        let invoiceid = data.invoiceid;
+        let invoiceTx = new bsv.Transaction(data.tx);
+
+        let tx = db.send([], invoiceTx);
+        let txhex = tx.toString();
+        let txid = tx.id;
+
+        res = await sendMessage({
+            tag: 'api',
+            subject: 'payinvoice',
+            invoiceid: invoiceid,
+            paymenttx: txhex,
+        });
+
+        console.log(res.statusCode, res.data);
+
+        if (res.data.error) {
+            console.log(res.data);
+            return;
+        }
+
+        db.addTransaction(txhex, 'processed', { invoiceid, server });
+
+        await broadcastTx(db, txid);
+        await notifyBroadcast(db, txid, privkey);
+
     });
 
 program.parseAsync(process.argv)

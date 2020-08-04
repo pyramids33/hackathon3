@@ -25,10 +25,22 @@ function WalletDb (filename) {
     db.prepare('create table if not exists stxos (txid text, vout integer, amount integer, spenttxid text)').run();
     db.prepare('create unique index if not exists stxos_txid_vout on stxos(txid, vout)').run();
 
+    db.prepare('create table if not exists invoicetxns (txid text, invoiceid text, server text, notified text)').run();
+    db.prepare('create unique index if not exists invoicetxns_txid on invoicetxns(txid)').run();
+    db.prepare('create index if not exists invoicetxns_notified on invoicetxns(notified)').run();
+
     const psAddTransaction = db.prepare(`insert into transactions (txid, status, rawtx) values (?,?,?)`);
     const psUpdateTransactionStatus = db.prepare('update transactions set status = ? where txid = ?');
-    const psTransactionById = db.prepare('select rawtx from transactions where txid = ?');
+    const psTransactionById = db.prepare('select * from transactions where txid = ?');
     const psProcessedTransactions = db.prepare(`select txid from transactions where status = 'processed' order by rowid`);
+
+    const psAddInvoiceTxn = db.prepare('insert into invoicetxns (txid,invoiceid,server) values (?,?,?)');
+    const psInvoiceNotified = db.prepare('update invoicetxns set notified = ? where txid = ?');
+    const psInvoiceTxnByTxid = db.prepare(`
+        select invoicetxns.*,transactions.status 
+        from invoicetxns 
+            inner join transactions on invoicetxns.txid = transactions.txid 
+        where invoicetxns.txid = ?`);
 
     const psCurrentHDKey = db.prepare('select * from hdkeys order by id desc limit 1');
     const psHDKeyById = db.prepare('select * from hdkeys where id = ?');
@@ -87,7 +99,7 @@ function WalletDb (filename) {
     }
 
     function transactionById (txid) {
-        return psTransactionById.pluck().get(txid);
+        return psTransactionById.get(txid);
     }
 
     function updateTransactionStatus (txid, status) {
@@ -126,7 +138,21 @@ function WalletDb (filename) {
         return psUtxos.all();
     }
 
-    let addTransaction = db.transaction(function(txhex, status) {
+    function setInvoiceNotified (txid) {
+        return psInvoiceNotified.run(moment().toISOString(), txid);
+    }
+
+    function invoiceTxnById (txid) {
+        return psInvoiceTxnByTxid.get(txid);
+    }
+
+    function identityKey () {
+        let row = psCurrentHDKey.get();
+        let xprv = bsv.HDPrivateKey.fromString(row.xprv);
+        return xprv.deriveChild("m/44'/0'/0'/0/0/0").privateKey;
+    }
+
+    let addTransaction = db.transaction(function(txhex, status, { invoiceid, server }) {
         
         status = status||'processed';
 
@@ -142,6 +168,10 @@ function WalletDb (filename) {
             psAddStxo.run(tx.id, input.prevTxId.toString('hex'), input.outputIndex);
             psDeleteUtxo.run(input.prevTxId.toString('hex'), input.outputIndex);
         });
+
+        if (invoiceid) {
+            psAddInvoiceTxn.run(tx.id, invoiceid, server);
+        }
     
         psAddTransaction.run(tx.id, status, Buffer.from(txhex,'hex'));
     });
@@ -189,9 +219,9 @@ function WalletDb (filename) {
         return key.toAddress().toString();
     }
 
-    function send (addressAmounts) {
+    function send (addressAmounts, invoiceTx) {
             
-        let tx = new bsv.Transaction();
+        let tx = invoiceTx || new bsv.Transaction();
 
         addressAmounts.forEach(function (item) {
             tx.to(item[0], item[1]);
@@ -211,7 +241,7 @@ function WalletDb (filename) {
 
             rowid = utxo.rowid;
 
-            let spendtx = new bsv.Transaction(transactionById(utxo.txid));
+            let spendtx = new bsv.Transaction(transactionById(utxo.txid).rawtx);
             let output = spendtx.outputs[utxo.vout];
             
             let addressInfo = getAddress(output.script.toAddress().toString());
@@ -231,12 +261,12 @@ function WalletDb (filename) {
 
             while (changeOut > 9000) {
                 let change2 = newAddress();
-                tx.to(change2, changeOut/2);
+                tx.to(change2, Math.floor(changeOut/2));
                 changeOut = tx.getChangeOutput();
                 changeOut = changeOut ? changeOut.satoshis : 0;
             }
 
-            //console.log(output.satoshis, tx.getFee(), tx.inputAmount, tx.outputAmount, tx.getFee()+tx.outputAmount, changeOut);
+            console.log(output.satoshis, tx.getFee(), tx.inputAmount, tx.outputAmount, tx.getFee()+tx.outputAmount, changeOut);
             
             if (tx.inputAmount >= tx.getFee()+tx.outputAmount) {
                 break;
@@ -268,7 +298,10 @@ function WalletDb (filename) {
         updateTransactionStatus,
         processedTransactions,
         totalUnspent,
-        listUtxos
+        listUtxos,
+        identityKey,
+        setInvoiceNotified,
+        invoiceTxnById
     }
 }
 
