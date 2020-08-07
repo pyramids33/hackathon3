@@ -2,7 +2,9 @@
 const { Pool } = require('pg');
 const express = require('express');
 const fs = require('fs');
+const bsv = require('bsv');
 
+const JSONEnveloper = require('./jsonenveloper.js');
 const config = require('./config.js');
 const Database = require('./database.js');
 const multipartReader = require('./multipartReader.js');
@@ -35,7 +37,15 @@ if (config.env != 'dev') {
     app.set('trust proxy', 'loopback');
 }
 
-app.set('context', { db, config });
+let jsonEnvelope = JSONEnveloper(bsv.PrivateKey.fromString(config.signingKey));
+
+app.set('context', { db, config, jsonEnvelope });
+
+app.use(function(req, res, next) {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+    next();
+});
 
 app.use(express.static('site'));
 
@@ -50,6 +60,7 @@ app.use(express.static('site'));
 // login.html
 // form.html
 // tag.html
+
 
 let tagData = asyncHandler(async function (req, res) {
 
@@ -84,13 +95,16 @@ let tagData = asyncHandler(async function (req, res) {
 
 let tagInfo = asyncHandler(async function (req,res) {
     
+    let { jsonEnvelope } = req.app.get('context');
+
     if (req.message.query === undefined) {
         res.status(200).json({ error: 'INVALID_QUERY' });
     }
 
     let tag = req.message.query.tag;
     let info = await db.messages.tagPageInfo(tag);
-    res.json(info).end();
+    let signed = jsonEnvelope(info);
+    res.json(signed).end();
 });
 
 const handleMessage = asyncHandler(async function (req, res, next) {
@@ -100,7 +114,7 @@ const handleMessage = asyncHandler(async function (req, res, next) {
             'taginfo': tagInfo,
             'payinvoice': payment.payInvoice,
             'notifybroadcast': payment.notifyBroadcast
-        }
+        };
 
         if (req.message.subject && actions[req.message.subject]) {
             return actions[req.message.subject](req, res, next);

@@ -21,11 +21,11 @@ function loadWallet (dbfile) {
 
 async function broadcastTx (db, txid) {
 
-    console.log('broadcast', txid);
-
     let tx = db.transactionById(txid);
 
     if (tx.status === 'processed') {
+
+        console.log('broadcast', txid);
 
         let res = await axios.post(
             'https://www.ddpurse.com/openapi/mapi/tx', 
@@ -36,16 +36,20 @@ async function broadcastTx (db, txid) {
  
         let payload = JSON.parse(res.data.payload);
         
-        console.log(payload);
-
         if (payload.returnResult === 'failure') {
-            if (payload.resultDescription !== 'ERROR: Transaction already in the mempool') {
+            console.log(payload.returnResult, payload.resultDescription);
+            if (payload.resultDescription === 'ERROR: Transaction already in the mempool' ||
+                payload.resultDescription === 'ERROR: 257: txn-already-known') {
+                db.updateTransactionStatus(txid, 'broadcast');
+                return true;
+            } else {
+                db.updateTransactionStatus(txid, payload.resultDescription);
                 return false;
             }
+        } else {
+            db.updateTransactionStatus(txid, 'broadcast');
+            return true;
         }
-
-        db.updateTransactionStatus(txid, 'broadcast');
-        return true;
     }
 }
 
@@ -53,10 +57,10 @@ async function notifyBroadcast (db, txid, privkey) {
 
     let inv = db.invoiceTxnById(txid);
 
-    console.log('notify', txid, inv);
-
     if (inv && inv.notified === null && inv.status === 'broadcast') {
-        
+
+        console.log('notify', txid, inv);
+
         let sendMessage = MessageSender(inv.server, privkey);
 
         res = await sendMessage({
@@ -65,7 +69,10 @@ async function notifyBroadcast (db, txid, privkey) {
             invoiceid: inv.invoiceid
         });
 
-        console.log(res.statusCode, res.data);
+        if (res.data && res.data.error) {
+            console.log(res.statusCode, res.data);
+            return;
+        }
 
         db.setInvoiceNotified(txid);
     }
@@ -139,7 +146,7 @@ program.command('send <to> <amount>')
     });
 
 
-program.command('broadcast ')
+program.command('broadcast')
     .description('broadcast processed transactions')
     .option('-l, --list', 'list the transactions, dont broadcast them')
     .action (async (cmd) => {
@@ -160,9 +167,19 @@ program.command('notifyinvoices')
     .description('notify invoice payments')
     .option('-l, --list', 'list the invoices, dont notify')
     .action (async (cmd) => {
-        // after broadcast
-        // select invoicetxn where status == broadcast and notified null
-        // notify all
+
+        let db = loadWallet(cmd.parent.target);
+        let privkey = db.identityKey();
+        let txns = db.invoicesToNotify();
+        
+        if (cmd.list) {
+            console.table(txns);
+            return;
+        }
+
+        for (let i = 0; i < txns.length; i++) {
+            await notifyBroadcast(db, txns[i].txid, privkey);
+        }
     });
 
 program.command('download <txid>')
@@ -172,7 +189,6 @@ program.command('download <txid>')
     .action (async (txid, cmd) => {
 
         let db = loadWallet(cmd.parent.target);
-
         let txfile = path.resolve(os.homedir(), 'tx', txid);
 
         if (!fs.existsSync(txfile)) {
@@ -192,7 +208,23 @@ program.command('download <txid>')
         }
     });
 
-program.command('data <server> <tag> [from]')
+program.command('taginfo <server> <tag>')
+    .description('get tag info')
+    .action(async (server, tag, cmd) => {
+        let db = loadWallet(cmd.parent.target);
+        let privkey = db.identityKey();
+        let sendMessage = MessageSender(server, privkey);
+
+        let res = await sendMessage({
+            tag: 'api',
+            subject: 'taginfo',
+            query: { tag }
+        });
+
+        console.log(JSON.parse(res.data));
+    });
+
+program.command('tagdata <server> <tag> [from]')
     .description('download data')
     .option('-p, --pay', 'pay 402 response automatically')
     .action(async (server, tag, from, cmd) => {
@@ -222,15 +254,14 @@ program.command('data <server> <tag> [from]')
             return;
         }
 
-        let data = JSON.parse(res.data);
-
         if (!cmd.pay) {
-            console.log(data);
+            console.log(res.data);
             return;
         }
 
-        let invoiceid = data.invoiceid;
-        let invoiceTx = new bsv.Transaction(data.tx);
+        let invdata = JSON.parse(JSON.parse(res.data).payload);
+        let invoiceid = invdata.invoiceid;
+        let invoiceTx = new bsv.Transaction(invdata.tx);
 
         let tx = db.send([], invoiceTx);
         let txhex = tx.toString();
@@ -254,6 +285,21 @@ program.command('data <server> <tag> [from]')
 
         await broadcastTx(db, txid);
         await notifyBroadcast(db, txid, privkey);
+
+        res = await sendMessage({
+            tag: 'api',
+            subject: 'tagdata',
+            query: {
+                tag: tag,
+                from: from
+            }
+        });
+
+        if (res.statusCode === 200) {
+            console.log(res.data);
+        } else {
+            console.log(res.statusCode, res.data);
+        }
 
     });
 

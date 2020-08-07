@@ -13,9 +13,9 @@
         <textarea id="mytext" name="mytext">my text goes here</textarea><br>
         <div id="sendermb"></div><br>
         <div>
-        <input type="hidden" id="sender" value="">
-        <input type="hidden" id="paymail" value="">
-        <input type="submit" id="submit" value="submit">
+            <input type="hidden" id="sender" value="">
+            <input type="hidden" id="paymail" value="">
+            <input type="submit" id="submit" value="submit">
         </div>
     </form>
     <br>
@@ -64,7 +64,6 @@ $(function () {
         data.timestamp = new Date().toISOString();
         data.tag = 'forms';
         data.sender = $('#sender').val();
-        data.paymail = $('#paymail').val();
 
         var message = JSON.stringify(data);
 
@@ -104,8 +103,8 @@ $(function () {
             contentType: false,
             processData: false,
             method: 'POST',
-            success: function(data,data2){
-                console.log(data,data2)
+            success: function(data, data2) {
+                console.log(data, data2)
             },
             error: function (err) {
                 console.log(err);

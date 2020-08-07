@@ -42,6 +42,12 @@ function WalletDb (filename) {
             inner join transactions on invoicetxns.txid = transactions.txid 
         where invoicetxns.txid = ?`);
 
+    const psInvoicesToNotify = db.prepare(`
+        select invoicetxns.*,transactions.status 
+        from invoicetxns 
+            inner join transactions on invoicetxns.txid = transactions.txid `);
+        // where transactions.status = 'broadcast' and invoicetxns.notified is null`);
+
     const psCurrentHDKey = db.prepare('select * from hdkeys order by id desc limit 1');
     const psHDKeyById = db.prepare('select * from hdkeys where id = ?');
     const psAddHDKey = db.prepare('insert into hdkeys (n,created,xprv) values (?,?,?);');
@@ -146,13 +152,17 @@ function WalletDb (filename) {
         return psInvoiceTxnByTxid.get(txid);
     }
 
+    function invoicesToNotify () {
+        return psInvoicesToNotify.all();
+    }
+
     function identityKey () {
         let row = psCurrentHDKey.get();
         let xprv = bsv.HDPrivateKey.fromString(row.xprv);
         return xprv.deriveChild("m/44'/0'/0'/0/0/0").privateKey;
     }
 
-    let addTransaction = db.transaction(function(txhex, status, { invoiceid, server }) {
+    let addTransaction = db.transaction(function(txhex, status, invoice) {
         
         status = status||'processed';
 
@@ -169,8 +179,8 @@ function WalletDb (filename) {
             psDeleteUtxo.run(input.prevTxId.toString('hex'), input.outputIndex);
         });
 
-        if (invoiceid) {
-            psAddInvoiceTxn.run(tx.id, invoiceid, server);
+        if (invoice) {
+            psAddInvoiceTxn.run(tx.id, invoice.invoiceid, invoice.server);
         }
     
         psAddTransaction.run(tx.id, status, Buffer.from(txhex,'hex'));
@@ -301,7 +311,8 @@ function WalletDb (filename) {
         listUtxos,
         identityKey,
         setInvoiceNotified,
-        invoiceTxnById
+        invoiceTxnById,
+        invoicesToNotify
     }
 }
 

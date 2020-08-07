@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>view data</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.4.1/css/bootstrap-reboot.min.css">
+    <style>
+        .content div {
+            margin-bottom: 1em;
+        }
+        .content { width: 100% }
+        #datatable {
+            border-collapse: collapse;
+            border:1px solid #333;
+            border-radius: .5em;
+        }
+        #datatable td,
+        #datatable th {
+            border: 1px solid #333;
+            padding: .4em .7em;
+        }
+    </style>
+</head>
+<body>
+
+<div class="content width-sm">
+    <h1>Data Request</h1>
+    <input type="hidden" id="sender" value="">
+    <input type="hidden" id="paymail" value="">
+    <input type="hidden" id="invoiceid" value="">
+    <div id="sendermb"></div>
+    <div id="requestmb"></div>
+    <div id="paymentmb"></div>
+    <div id="uploadmb"></div>
+    <div id="notifymb"></div>
+    <table id="datatable">
+        <tr><td>messageid</td><td>tag</td><td>index</td><td>subject</td><td>sender</td><td>time</td><td>hash</td></tr>
+    </table>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.4.1.min.js" integrity="sha256-CSXorXvZcTkaix6Yvo6HppcZGetbYMGWSFlBw8HfCJo=" crossorigin="anonymous"></script>
+<script src='https://www.moneybutton.com/moneybutton.js'></script>
+<script src='https://unpkg.com/bsv@0.30.0/bsv.min.js'></script>
+<script>
+$(function () {
+
+    function sendMessage (element, label, data, callback) {
+
+        var messageObj = {};
+        messageObj.messageid = new Date().valueOf().toString() + Math.random().toFixed(16).slice(2);
+        messageObj.timestamp = new Date().toISOString();
+        messageObj.sender = $('#sender').val();
+        
+        for (x in data) {
+            messageObj[x] = data[x];
+        }
+
+        var message = JSON.stringify(messageObj);
+
+        moneyButton.render(element, {
+            type: 'buy',
+            label: label,
+            cryptoOperations: [
+                {
+                    name: 'mySignature',
+                    method: 'sign',
+                    data: message,
+                    dataEncoding: 'utf8',
+                    key: 'identity',
+                    algorithm: 'bitcoin-signed-message'
+                }
+            ],
+            onCryptoOperations: function (cryptoOperations) {
+                var formdata = new FormData();
+                formdata.append('message', cryptoOperations[0].data);
+                formdata.append('sig', cryptoOperations[0].value);
+
+                $.ajax({
+                    url: 'http://localhost:6767',
+                    data: formdata,
+                    cache: false,
+                    contentType: false,
+                    processData: false,
+                    method: 'POST',
+                    success: function(xhr, data) {
+                        callback(xhr, data);
+                    },
+                    error: function (xhr) {
+                        callback(xhr);
+                    }
+                });
+            },
+            onError: function (arg) { 
+                console.log('send',arg);
+            }
+        });
+    }
+    /*
+    a lot of swipes here, maybe use invisible money button or
+    money button can implement button type == 402
+    */
+
+    var $mbsender = $('#sendermb');
+    var $mbrequest = $('#requestmb');
+    var $mbpayment = $('#paymentmb');
+    var $mbupload = $('#uploadmb');
+    var $mbnotify = $('#notifymb');
+
+    $('#theform').prop('disabled', true);
+
+    moneyButton.render($mbsender[0], {
+        type: 'buy',
+        label: 'Get Identity',
+        cryptoOperations: [
+            {
+                name: 'myAddress',
+                method: 'address'
+            }
+        ],
+        onCryptoOperations: function (cryptoOperations) {
+            $('#sender').val(cryptoOperations[0].value);
+            $('#paymail').val(cryptoOperations[0].paymail);
+            $mbsender.text('Sender: ' + cryptoOperations[0].paymail + ' (' + cryptoOperations[0].value + ') ');
+            $mbsender.removeAttr('style');
+            prepDataRequest();
+        },
+        onError: function (arg) { 
+            console.log(arg);
+        }
+    });
+
+    function prepDataRequest () {
+
+        sendMessage($mbrequest[0], 'request data', {
+            subject: 'tagdata',
+            tag: 'api',
+            query: {
+                tag: 'forms',
+                from: 1
+            }
+        }, handleDataRequestResponse)
+    }
+
+    function handleDataRequestResponse (xhr,data) {
+        
+        if (xhr.status == 402) {
+            handle402(xhr.responseJSON);
+        } else {
+            console.log(xhr,data);
+            var lines = xhr.split('\n');
+            $.each(lines, function (index, item) {
+                if (item > ''){
+                    var tblrow = $('<tr/>');
+                    var rowdata = JSON.parse(item);
+                    $.each(rowdata, function (index, item) {
+                        var td = $('<td/>', { text: item.toString() });
+                        tblrow.append(td);
+                    });
+                    $('#datatable').append(tblrow);
+                }
+            })
+        }
+    }
+
+    function handle402 (data) {
+        var payload = JSON.parse(data.payload);
+        $mbrequest.text('402 Payment Required');
+        $mbrequest.removeAttr('style');
+        $mbrequest.append($('<pre/>', { text: JSON.stringify(payload,null,2) }));
+        $('#invoiceid').val(payload.invoiceid);
+
+        var outputs = [];
+        var tx = bsv.Transaction(payload.tx);
+        tx.outputs.forEach(function (item) {
+            if (item.satoshis > 0) {
+                outputs.push({
+                    to: item.script.toAddress().toString(),
+                    amount: (item.satoshis/100000000).toString(),
+                    currency: 'BSV'
+                });
+            } else {
+                outputs.push({
+                    script: item.script.toASM(),
+                    amount: '0',
+                    currency: 'BSV'
+                });
+            }
+        });
+
+        moneyButton.render($mbpayment[0], {
+            type: 'buy',
+            label: 'pay invoice',
+            outputs: outputs,
+            onPayment: function (arg) {
+                handlePayment(arg);
+            },
+            onError: function (arg) { 
+                console.log(arg);
+            }
+        });
+    }
+
+    function handlePayment (payment) {
+        $mbpayment.remove();
+        console.log(payment);
+        
+        sendMessage($mbupload[0], 'upload payment', {
+            subject: 'payinvoice',
+            tag: 'api',
+            invoiceid: $('#invoiceid').val(),
+            paymenttx: payment.rawtx
+        }, handleInvoicePaid)
+    }
+
+    function handleInvoicePaid (xhr) {
+        $mbupload.remove();
+        console.log('paid', xhr);
+
+        sendMessage($mbnotify[0], 'notify payment', {
+            subject: 'notifybroadcast',
+            tag: 'api',
+            invoiceid: $('#invoiceid').val()
+        }, handleNotified)
+    }
+
+    function handleNotified (xhr) {
+        $mbnotify.remove();
+        console.log('notified', xhr);
+
+        //prepDataRequest();
+    }
+
+});
+</script>
+
+</body>
+</html>

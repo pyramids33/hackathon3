@@ -1,12 +1,13 @@
 todo
 
-cli-wallet
+.cli-wallet
 
-server
-    message permissions (admin/user/etc)
-    configure recipients
-    server sign data
-    json-envelope
+.server
+    .message permissions (admin/user/etc)
+    .configure recipients
+    .server sign data
+    .json-envelope
+    dl attachment
 
 example site (moneybutton)
     login/logout

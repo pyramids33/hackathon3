@@ -9,6 +9,8 @@ const asyncHandler = require('./asynchandler.js');
 
 function validateMessage (req, res, next) {
 
+    let { config } = req.app.get('context');
+
     if (req.message === undefined) {
         res.status(200).json({ error: 'EMPTY_MESSAGE' });
         return;
@@ -37,6 +39,19 @@ function validateMessage (req, res, next) {
 
     if (!validTimestamp) {
         res.status(200).json({ error: 'INVALID_TIMESTAMP' });
+        return;
+    }
+
+    let perm = config.permissions.find(function (item) {
+        return (
+            (item[0] === req.message.sender || item[0] === '*') &&
+            (item[1] === req.message.tag || item[1] === '*') &&
+            (item[2] === req.message.subject || item[2] === '*')
+        );
+    });
+
+    if (perm === undefined) {
+        res.status(200).json({ error: 'ACCESS_DENIED' });
         return;
     }
 

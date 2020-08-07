@@ -1,25 +1,16 @@
 
 const bsv = require('bsv');
 const axios = require('axios');
+const moment = require('moment');
+const { PaymailClient } = require('@moneybutton/paymail-client');
+
 const asyncHandler = require('./asynchandler.js');
 
-// client:
-// check access
-// if 402
-//     create invoice
-//     pay invoice
-//     check again
-//
-
-// from site configs
-let dummyspec = [
-    { address: '12yxtkjgKtaAqLeB3kQn5dgdEwRDS1i249', amount: 1000 },
-    { address: '1Hzb2yVHGo9tMHaEEDpZj8fTV8hNWtD4nF', amount: 1000 }
-];
+let paymailClient = new PaymailClient();
 
 let requirePayment = async function (req, res, taginfo) {
 
-    let { db } = req.app.get('context');
+    let { db, config, jsonEnvelope } = req.app.get('context');
 
     res.status(402);
     res.set("Content-Type", 'application/json');
@@ -29,32 +20,50 @@ let requirePayment = async function (req, res, taginfo) {
     // create unsigned tx for invoice
     let tx = new bsv.Transaction();
     
-    dummyspec.forEach(function (value) {
-        tx.to(value.address, value.amount);
-    });
+    await Promise.all(
+        config.paymentOuts.map(async function (item) {
+            if (item.paymail) {              
+                let output = await paymailClient.getOutputFor(item.paymail, {
+                    senderHandle: config.paymailClient.handle,
+                    amount: item.sats,
+                    senderName: config.handle,
+                    purpose: 'hackathon3invoice'
+                }, config.paymailClient.key);
 
-    // maybe good to sign this on the server
-    //console.log([ invoiceid, taginfo.tag, taginfo.index, taginfo.taghash, req.message.sender ])
-    tx.addSafeData([ invoiceid, taginfo.tag, taginfo.index.toString(), taginfo.taghash, req.message.sender ]);
+                tx.addOutput(new bsv.Transaction.Output({ script: output, satoshis: item.sats }));
+            } else if (item.address) {
+                tx.to(item.address, item.sats);
+            }
+        }));
+
+    let opreturnData = jsonEnvelope([ invoiceid, taginfo.tag, taginfo.index.toString(), taginfo.taghash, req.message.sender ]);
+
+    tx.addSafeData([ 
+        opreturnData.payload, 
+        Buffer.from(opreturnData.sig, 'hex'), 
+        Buffer.from(opreturnData.publicKey, 'hex'),
+        opreturnData.encoding,
+        opreturnData.mimetype
+    ]);
 
     await db.payments.addInvoice({
         invoiceid,
-        spec: JSON.stringify(dummyspec),
-        created: new Date().toISOString(),
+        created: moment().toISOString(),
         userid: req.message.sender,
-        amount: 10000,
+        amount: tx.outputAmount,
         tag: taginfo.tag, 
         index: taginfo.index,
         invoicetx: tx.toString()
     });
 
-    res.json({
+    signed = jsonEnvelope({
         purpose: 'Access to tag:' + taginfo.tag + ' for one hour',
         taghash: taginfo,
         invoiceid,
-        spec: dummyspec,
         tx: tx.toString()
     });
+
+    res.json(signed);
     return;
 };
 
@@ -88,31 +97,10 @@ let payInvoice = asyncHandler(async function (req, res, next) {
 
     await db.payments.setPaymentAccepted({ invoiceid: invoice.invoiceid, txid: signedTx.id });
 
-    // broadcast
-    // let broadcastRes = await axios.post(
-    //     'https://www.ddpurse.com/openapi/mapi/tx', 
-    //     { rawtx: signedTx.toString() }, 
-    //     { headers: { 
-    //         'token': '561b756d12572020ea9a104c3441b71790acbbce95a6ddbf7e0630971af9424b'
-    //     }});
-
-    // let payload = JSON.parse(broadcastRes.data.payload);
-    
-    // if (payload.returnResult === 'failure') {
-    //     res.status(200).json({ error: 'INVALID_TRANSACTION', description: payload.resultDescription });
-    //     return;
-    // }
-
-    // await db.payments.addAccess({ 
-    //     invoiceid, 
-    //     txid: signedTx.id, 
-    //     userid: req.message.sender, 
-    //     created: new Date().toISOString(), 
-    //     tag: invoice.tag,
-    //     index: invoice.index
-    // });
-
-    res.status(200).json({ status: signedTx.id + ' accepted. Let me know when the tx is broadcast.'});
+    res.status(200).json({ 
+        invoiceid: invoice.invoiceid, 
+        txid: signedTx.id
+    });
 });
 
 let notifyBroadcast = asyncHandler(async function (req, res, next) {
@@ -125,7 +113,7 @@ let notifyBroadcast = asyncHandler(async function (req, res, next) {
         res.status(200).json({ error: 'INVOICE_DONE' });
         return;
     }
-    console.log(invoice);
+    //console.log(invoice);
     let broadcastRes = await axios.get(
         'https://www.ddpurse.com/openapi/mapi/tx/'+invoice.paymenttxid,
         { headers: { 
