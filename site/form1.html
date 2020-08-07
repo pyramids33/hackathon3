@@ -5,10 +5,31 @@
     <title>test send</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.4.1/css/bootstrap-reboot.min.css">
+    <style>
+        .content div {
+            margin-bottom: 1em;
+        }
+        .content { width: 100% }
+        #datatable {
+            border-collapse: collapse;
+            border:1px solid #333;
+            border-radius: .5em;
+        }
+        #datatable td,
+        #datatable th {
+            border: 1px solid #333;
+            padding: .4em .7em;
+        }
+    </style>
 </head>
 <body>
 
 <div class="content width-sm">
+    <h1>Form Submission</h1>
+    <p>
+        Demonstrates the process of completing a form, signing the form with your identity, 
+        then submitting the signed message to the database.
+    </p>
     <form id="theform">
         <textarea id="mytext" name="mytext">my text goes here</textarea><br>
         <div id="sendermb"></div><br>
