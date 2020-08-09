@@ -14,7 +14,8 @@ let config = {
     env: 'dev',
     tempPath: path.resolve(__dirname, '../data/temp/'),
     storagePath: path.resolve(__dirname, '../data/storage/'),
-    mapiUrl: 'https://merchantapi.matterpool.io/mapi/',
+    mapiUrl: 'https://www.ddpurse.com/openapi/mapi/',
+    mapiToken: '561b756d12572020ea9a104c3441b71790acbbce95a6ddbf7e0630971af9424b',
     signingKey: 'L3gZFJgxBFReLt58Jm2A5ejNkiFeZdrpr8b1FQKYs9wijTS7PagJ',
     paymailClient: {
         key: null,

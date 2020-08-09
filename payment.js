@@ -15,7 +15,7 @@ let requirePayment = async function (req, res, taginfo) {
     res.status(402);
     res.set("Content-Type", 'application/json');
 
-    let invoiceid = new Date().valueOf().toString() + Math.random().toFixed(10).slice(2);
+    let invoiceid = moment().valueOf().toString() + Math.random().toFixed(10).slice(2);
 
     // create unsigned tx for invoice
     let tx = new bsv.Transaction();
@@ -115,9 +115,9 @@ let notifyBroadcast = asyncHandler(async function (req, res, next) {
     }
     //console.log(invoice);
     let broadcastRes = await axios.get(
-        'https://www.ddpurse.com/openapi/mapi/tx/'+invoice.paymenttxid,
+        config.mapiUrl + 'tx/' + invoice.paymenttxid,
         { headers: { 
-            'token': '561b756d12572020ea9a104c3441b71790acbbce95a6ddbf7e0630971af9424b'
+            'token': config.mapiToken
         }});
 
     let payload = JSON.parse(broadcastRes.data.payload);

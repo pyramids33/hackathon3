@@ -8,7 +8,7 @@
     "serve": "npx nodemon server.js"
   },
   "keywords": [],
-  "author": "",
+  "author": "Tim Middleton",
   "dependencies": {
     "@moneybutton/paymail-client": "^0.38.4",
     "axios": "^0.19.2",

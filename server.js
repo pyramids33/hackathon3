@@ -49,19 +49,6 @@ app.use(function(req, res, next) {
 
 app.use(express.static('site'));
 
-// cli user
-// just use a keypair and create the signed json messages
-
-// web user
-// let user login to the static site with cookie/token/paymail
-// the static pages can create the signed json messages and post them 
-
-// static pages
-// login.html
-// form.html
-// tag.html
-
-
 let tagData = asyncHandler(async function (req, res) {
 
     let { db } = req.app.get('context');
