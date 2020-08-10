@@ -124,7 +124,7 @@ The message format.
 ```
 {
     // These are automatically added by the MessageSender object
-    messageid: unique string
+    messageid: unique string /^[a-zA-Z0-9]+$/
     timestamp: ISO 8601 date
     sender: bitcoin address
 
@@ -147,6 +147,113 @@ So each tag is like a mini blockchain of messages.
 The taghash and index is embedded in the payment op_return data so that you can go back and 
 check the hashes when it was purchased, and you should be able to check that you have all the messages in a tag.
 
+File attachments are not included in the hash. In that case include the attachment hash, filename etc in the message fields.
+
+### API
+
+Use the tag 'api' and subjects below to perform actions on the server.
+
+1. 'taginfo' - Returns information about tag
+
+```
+Request
+{
+    tag: 'api'
+    subject: 'taginfo'
+    query: {
+        'tag': '...'
+    }
+}
+
+Response (JSON Envelope)
+{
+  payload: '{"tag":"forms","index":5,"taghash":"218225f686fb14e8483ae52243efa9d3c02800fe5ae02a6e861df1a34ed6de04"}',
+  sig: 'IEJU3kIXU9/iZXS0ErPX4+rky+kn7tnjiO/eOdSf4V68B8sgTtKn2cmuDf7CwoV6cSN/PhWMIbnFJ7Gmu4knzAI=',
+  publicKey: '02bece04043c0c8dc573f3376a6564d33b73a81b49a9e37edf3184fdca4726899e',
+  encoding: 'UTF-8',
+  mimetype: 'application/json'
+}
+```
+
+2. 'tagdata' - Query tag messages
+```
+Request
+{
+    tag: 'api'
+    subject: 'tagdata'
+    query: {
+        'tag': '...'
+        'from': index number of first record to return
+    }
+}
+
+Response
+HTTP 402 (JSON Envelope)
+
+payload: {
+    "purpose":"Access to tag:forms for one hour",
+    "taghash":{ 
+        "tag":"forms",
+        "index":5,
+        "taghash":"218225f686fb14e8483ae52243efa9d3c02800fe5ae02a6e861df1a34ed6de04"
+    },
+    "invoiceid":"15970383489761245578926",
+    "tx": "txhex with required payment output"
+}
+
+OR
+
+Response (Newline delimited JSON)
+["15967919470525739078060725622","forms",5,"test form","17rGQ4A3NAkhtbwZBCvNjEzfMtkJz9dTGv","2020-08-07T09:19:07.052Z","218225f686fb14e8483ae52243efa9d3c02800fe5ae02a6e861df1a34ed6de04","1f708bb1293b99f6d9a49ae872d8ace02e280d1ef8ca51315361f812ac58f203812661e754caec185ba2bd049400137069ad99aca4a47cbb266bf92baa1d837089","7b226d7974657874223a2268657265206973206d6f72652074657874222c226d6573736167656964223a223135393637393139343730353235373339303738303630373235363232222c227375626a656374223a227465737420666f726d222c2274696d657374616d70223a22323032302d30382d30375430393a31393a30372e3035325a222c22746167223a22666f726d73222c2273656e646572223a2231377247513441334e416b687462775a4243764e6a457a664d746b4a7a3964544776227d"]
+
+each line is a JSON array [ MessageId, tag, index, subject, sender, isodate, taghash(hex), sig(hex), message(hex)]
+
+e.g Buffer.from(line[8],'hex').toString('utf-8')
+
+```
+3. 'getattachment' - Download message attachment
+```
+Request
+{
+    tag: 'api'
+    subject: 'getattachment'
+    query: {
+        'tag': '...'
+        'index': index number of message with attachment
+    }
+}
+
+Response - see tag data response
+```
+4. 'payinvoice' - Send transaction paying invoice
+```
+Request
+{
+    tag: 'api'
+    subject: 'payinvoice'
+    invoiceid: invoiceid
+    paymenttx: signed tx hex
+}
+
+Response
+200 OK
+{ error: ... }
+
+```
+
+5. 'notifybroadcast' - Notify server that transaction was broadcast
+```
+Request
+{
+    tag: 'api'
+    subject: 'notifybroadcast'
+    invoiceid: invoiceid
+}
+
+Response
+200 OK
+{ error: ... }
+```
 
 ### 402 Payment Flow
 
@@ -229,6 +336,9 @@ download [options] <txid>                download a transaction with txid. it is
 taginfo <server> <tag>                   get tag info
 
 tagdata [options] <server> <tag> [from]  download data
+  -p, --pay   pay 402 response automatically
+
+getattachment [options] <server> <tag> <index> <savepath>  download message attachment
   -p, --pay   pay 402 response automatically
 
 ```

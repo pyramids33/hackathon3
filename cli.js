@@ -57,7 +57,7 @@ async function notifyBroadcast (db, txid, privkey) {
 
     let inv = db.invoiceTxnById(txid);
 
-    if (inv && inv.notified === null && inv.status === 'broadcast') {
+    if (inv && inv.server > '' && inv.notified === null && inv.status === 'broadcast') {
 
         console.log('notify', txid, inv);
 
@@ -76,6 +76,37 @@ async function notifyBroadcast (db, txid, privkey) {
 
         db.setInvoiceNotified(txid);
     }
+}
+
+async function payInvoice (db, server, privkey, data) {
+    let invdata = JSON.parse(JSON.parse(data).payload);
+    let invoiceid = invdata.invoiceid;
+    let invoiceTx = new bsv.Transaction(invdata.tx);
+
+    let tx = db.send([], invoiceTx);
+    let txhex = tx.toString();
+    let txid = tx.id;
+
+    let sendMessage = MessageSender(server, privkey); 
+
+    res = await sendMessage({
+        tag: 'api',
+        subject: 'payinvoice',
+        invoiceid: invoiceid,
+        paymenttx: txhex,
+    });
+
+    console.log(res.statusCode, res.data);
+
+    if (res.data.error) {
+        console.log(res.data);
+        return;
+    }
+
+    db.addTransaction(txhex, 'processed', { invoiceid, server });
+
+    await broadcastTx(db, txid);
+    await notifyBroadcast(db, txid, privkey);
 }
 
 try { fs.mkdirSync(path.resolve(os.homedir(), 'tx')); } catch (err) { }
@@ -259,32 +290,7 @@ program.command('tagdata <server> <tag> [from]')
             return;
         }
 
-        let invdata = JSON.parse(JSON.parse(res.data).payload);
-        let invoiceid = invdata.invoiceid;
-        let invoiceTx = new bsv.Transaction(invdata.tx);
-
-        let tx = db.send([], invoiceTx);
-        let txhex = tx.toString();
-        let txid = tx.id;
-
-        res = await sendMessage({
-            tag: 'api',
-            subject: 'payinvoice',
-            invoiceid: invoiceid,
-            paymenttx: txhex,
-        });
-
-        console.log(res.statusCode, res.data);
-
-        if (res.data.error) {
-            console.log(res.data);
-            return;
-        }
-
-        db.addTransaction(txhex, 'processed', { invoiceid, server });
-
-        await broadcastTx(db, txid);
-        await notifyBroadcast(db, txid, privkey);
+        await payInvoice(db, server, privkey, res.data);
 
         res = await sendMessage({
             tag: 'api',
@@ -299,6 +305,68 @@ program.command('tagdata <server> <tag> [from]')
             console.log(res.data);
         } else {
             console.log(res.statusCode, res.data);
+        }
+
+    });
+
+program.command('getattachment <server> <tag> <index> <savepath>')
+    .description('download message attachment')
+    .option('-p, --pay', 'pay 402 response automatically')
+    .action(async (server, tag, index, savepath, cmd) => {
+
+        let db = loadWallet(cmd.parent.target);
+        let privkey = db.identityKey();
+        let sendMessage = MessageSender(server, privkey);
+
+        let ws = fs.createWriteStream(savepath);
+
+        let res = await sendMessage({
+            tag: 'api',
+            subject: 'getattachment',
+            query: {
+                tag: tag,
+                index: index
+            }
+        }, null, null, null, true);
+
+        if (res.headers['content-type'] === 'application/octet-stream') {
+            await res.writeDataToStream(ws);
+            console.log('saved to', savepath);
+        } else {
+            await res.getDataAsString();
+        }
+
+        if (res.statusCode === 200) {
+            console.log(res.statusCode, res.data);
+            return;
+        }
+
+        if (res.statusCode !== 402) {
+            console.log(res.statusCode, res.data);
+            return;
+        }
+
+        if (!cmd.pay) {
+            console.log(res.data);
+            return;
+        }
+
+        await payInvoice(db, server, privkey, res.data);
+
+        res = await sendMessage({
+            tag: 'api',
+            subject: 'getattachment',
+            query: {
+                tag: tag,
+                index: index
+            }
+        }, null, null, null, true);
+
+        if (res.headers['content-type'] === 'application/octet-stream') {
+            await res.writeDataToStream(ws);
+            console.log('saved to', savepath);
+        } else {
+            await res.getDataAsString();
         }
 
     });

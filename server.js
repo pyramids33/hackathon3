@@ -12,6 +12,10 @@ const message = require('./message.js');
 const payment = require('./payment.js');
 const asyncHandler = require('./asynchandler.js');
 
+const path = require('path');
+const { promisify } = require('util');
+const fs_exists = promisify(fs.exists);
+
 if (process.argv.length > 2) {
     Object.assign(config, JSON.parse(fs.readFileSync(process.argv[2])));
 }
@@ -80,6 +84,48 @@ let tagData = asyncHandler(async function (req, res) {
     res.end();
 });
 
+let getAttachment = asyncHandler(async function (req, res) {
+
+    let { db } = req.app.get('context');
+    
+    if (req.message.query === undefined) {
+        res.status(200).json({ error: 'INVALID_QUERY' });
+    }
+    
+    let info = await db.messages.tagPageInfo(req.message.query.tag);
+    
+    if (info === undefined) {
+        res.status(200).end();
+        return;
+    }
+
+    let hasAccess = (await db.payments.hasAccess(req.message.sender, req.message.query.tag))||false;
+    
+    if (!hasAccess) {
+        return payment.requirePayment(req, res, info);
+    }
+
+    info = await db.messages.tagPageData(req.message.query.tag, req.message.query.index, 1);
+    
+    if (info === undefined || info.length === 0) {
+        res.status(404).end();
+        return;
+    }
+
+    info = info[0];
+    
+    let storagepath = info[0] + '.bin';
+
+    let fileExists = await fs_exists(path.resolve(config.storagePath,storagepath));
+    
+    if (fileExists === false) {
+        res.status(404).end();
+        return;
+    }
+
+    res.sendFile(storagepath, { root: config.storagePath });
+});
+
 let tagInfo = asyncHandler(async function (req,res) {
     
     let { jsonEnvelope } = req.app.get('context');
@@ -90,6 +136,12 @@ let tagInfo = asyncHandler(async function (req,res) {
 
     let tag = req.message.query.tag;
     let info = await db.messages.tagPageInfo(tag);
+
+    if (info === undefined) {
+        res.status(200).json({ error: 'UNKNOWN_TAG'});
+        return;
+    }
+
     let signed = jsonEnvelope(info);
     res.json(signed).end();
 });
@@ -99,6 +151,7 @@ const handleMessage = asyncHandler(async function (req, res, next) {
         let actions = {
             'tagdata': tagData,
             'taginfo': tagInfo,
+            'getattachment': getAttachment,
             'payinvoice': payment.payInvoice,
             'notifybroadcast': payment.notifyBroadcast
         };

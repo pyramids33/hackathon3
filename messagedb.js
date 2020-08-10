@@ -70,7 +70,7 @@ function MessageDb (pool) {
     async function tagPageData (tag, from, limit) {
         let queryarg = {
             text: `
-                select messageid,tag,index,subject,sender,timestamp,encode(taghash,'hex')
+                select messageid,tag,index,subject,sender,timestamp,encode(taghash,'hex'),encode(sig,'hex'),encode(message,'hex')
                 from messages 
                 where tag = $1 and index >= $2
                 order by tag,index limit ${limit};`,

@@ -1,9 +1,33 @@
 const bsvMessage = require('bsv/message');
 const FormData = require('form-data');
 const moment = require('moment');
+
 function MessageSender (url, privkey) {
 
-    function send(args, stream, progress, progressInterval) {
+    function getDataAsString (res) {
+        return function () {
+            return new Promise(function (resolve, reject) {
+                let chunks = [];
+                res.on('data', (chunk) => chunks.push(chunk))
+                res.on('end', function () {
+                    res.data = Buffer.concat(chunks).toString();
+                    resolve(res);
+                });
+            });
+        }
+    }
+
+    function writeDataToStream (res) {
+        return function (writeStream) {
+            return new Promise(function (resolve, reject) {
+                res.pipe(writeStream);
+                writeStream.on('finish', resolve);
+                writeStream.on('error', reject);
+            });
+        }
+    }
+
+    function send(args, stream, progress, progressInterval, handleManually) {
         return new Promise(function (resolve, reject) {
 
             progressInterval = progressInterval||1000;
@@ -41,12 +65,14 @@ function MessageSender (url, privkey) {
                     progress(req.socket.bytesWritten, true);
                 }
 
-                let chunks = [];
-                res.on('data', (chunk) => chunks.push(chunk))
-                res.on('end', function () {
-                    res.data = Buffer.concat(chunks).toString();
+                res.getDataAsString = getDataAsString(res);
+                res.writeDataToStream = writeDataToStream(res);
+
+                if (handleManually) {
                     resolve(res);
-                });
+                } else {
+                    res.getDataAsString().then(resolve).catch(reject);
+                }
             });
                 
             req.on('socket', function (socket) {

@@ -24,6 +24,7 @@ let config = {
     permissions: [
         [ '*', 'api', '*' ],
         [ '1HML3oox9YQCjFnoStwXULYAiUBxm2G6tw', 'testtag', 'testsubject' ],
+        [ '1HML3oox9YQCjFnoStwXULYAiUBxm2G6tw', 'testtag', 'testattach' ],
         [ '17rGQ4A3NAkhtbwZBCvNjEzfMtkJz9dTGv', 'forms', '*' ]
     ],
     paymentOuts: [
