@@ -223,7 +223,13 @@ Request
     }
 }
 
-Response - see tag data response
+Response
+HTTP 402 (JSON Envelope) see tag data response
+
+OR
+
+The file data (application/octet-stream)
+
 ```
 4. 'payinvoice' - Send transaction paying invoice
 ```
@@ -343,11 +349,18 @@ getattachment [options] <server> <tag> <index> <savepath>  download message atta
 
 ```
 
+## Site
+The site folder contains two example html files that work standalone.  
+form1.html demonstrates how a website can use a form and moneybutton to upload data to profitsilo.  
+viewdata.html implements 402 Payment using moneybutton swipes.  
+
+
 ## Use Cases
 
 1. Business units sharing data, government departments sharing data.
-2. Logging messages for an API that uses signed json messages.
-3. Wallets that upload files and data on chain can embed transaction ids in 
+2. Publish scientific results
+3. Logging messages for an API that uses signed json messages.
+4. Wallets that upload files and data on chain can embed transaction ids in 
 messages or send the transaction as an attachment, and sell their wallet history.
 
 ## Prior Work
