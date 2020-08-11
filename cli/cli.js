@@ -78,7 +78,7 @@ async function notifyBroadcast (db, txid, privkey) {
             return;
         }
     
-        if (res.json.error) {
+        if (res.json.error && res.json.error !== 'INVOICE_DONE') {
             console.log('notifybroadcast', res.json);
             return;
         }
@@ -87,10 +87,6 @@ async function notifyBroadcast (db, txid, privkey) {
     }
 }
 
-async function payInvoice (db, server, privkey, data) {
-
-    
-}
 
 try { fs.mkdirSync(path.resolve(os.homedir(), 'tx')); } catch (err) { }
 
@@ -255,8 +251,23 @@ program.command('taginfo <server> <tag>')
         console.log(res.data);
     });
 
+function confirmPayment () {
+    return new Promise(function (resolve, reject) {
+        const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout
+        });
+          
+        rl.question('Pay Invoice? (y/n) ', function (answer) {
+            resolve(answer);
+            rl.close();
+        });
+    });
+}
+
 program.command('buyaccess <server> <tag>')
     .description('pay for access to tag')
+    .option("-p --pay", "pay automatically")
     .action(async (server, tag, cmd) => {
         let db = loadWallet(cmd.parent.target);
         let privkey = db.identityKey();
@@ -268,21 +279,32 @@ program.command('buyaccess <server> <tag>')
             query: { tag }
         });
 
-        if (res.statusCode !== 200 || res.json === undefined) {
+        if (res.statusCode !== 200 || res.json === undefined || res.json.error) {
             console.log(res.data);
             return;
         }
     
-        if (res.json.error) {
-            console.log(res.data);
-            return;
-        }
 
         let invdata = JSON.parse(res.json.payload);
         let invoiceid = invdata.invoiceid;
         let invoiceTx = new bsv.Transaction(invdata.tx);
     
         let tx = db.send([], invoiceTx);
+
+        console.log({
+            purpose: invdata.purpose,
+            taginfo: invdata.taghash,
+            invoiceid: invoiceid,
+            txcost: tx.inputAmount
+        });
+
+        if (cmd.pay === undefined) {
+            let pay = await confirmPayment();
+            if (!pay.toLowerCase().startsWith('y')) {
+                return;
+            }
+        }
+
         let txhex = tx.toString();
         let txid = tx.id;
     
@@ -300,10 +322,10 @@ program.command('buyaccess <server> <tag>')
             return;
         }
 
-        //db.addTransaction(txhex, 'processed', { invoiceid, server });
+        db.addTransaction(txhex, 'processed', { invoiceid, server });
     
-        //await broadcastTx(db, txid);
-        //await notifyBroadcast(db, txid, privkey);
+        await broadcastTx(db, txid);
+        await notifyBroadcast(db, txid, privkey);
     });
 
 program.command('tagdata <server> <tag> <from> <savepath>')
@@ -316,6 +338,8 @@ program.command('tagdata <server> <tag> <from> <savepath>')
         let privkey = db.identityKey();
         let sendMessage = MessageSender(server, privkey);
 
+        let ws = fs.createWriteStream(savepath);
+
         let res = await sendMessage({
             tag: 'api',
             subject: 'tagdata',
@@ -323,16 +347,16 @@ program.command('tagdata <server> <tag> <from> <savepath>')
                 tag: tag,
                 from: from
             }
-        });
+        }, null, null, null, true);
 
-        if (res.statusCode !== 200 || (res.json && res.json.error)) {
-            console.log(res.data);
+        if (res.statusCode === 200 && res.headers['content-type'] === 'application/octet-stream') {
+            await res.writeDataToStream(ws);
+            console.log('saved to', savepath);
             return;
-        }
+        } 
 
-        fs.writeFileSync(savepath, res.data);
-        console.log('saved to', savepath);
-        return;
+        await res.getDataAsString();
+        console.log(res.data);
     });
 
 program.command('getattachment <server> <tag> <index> <savepath>')
@@ -362,39 +386,6 @@ program.command('getattachment <server> <tag> <index> <savepath>')
         
         await res.getDataAsString();
         console.log(res.data);
-
-        // if (res.statusCode === 200) {
-        //     console.log(res.statusCode, res.data);
-        //     return;
-        // }
-
-        // if (res.statusCode !== 402) {
-        //     console.log(res.statusCode, res.data);
-        //     return;
-        // }
-
-        // if (!cmd.pay) {
-        //     console.log(res.data);
-        //     return;
-        // }
-
-        // await payInvoice(db, server, privkey, res.data);
-
-        // res = await sendMessage({
-        //     tag: 'api',
-        //     subject: 'getattachment',
-        //     query: {
-        //         tag: tag,
-        //         index: index
-        //     }
-        // }, null, null, null, true);
-
-        // if (res.headers['content-type'] === 'application/octet-stream') {
-        //     await res.writeDataToStream(ws);
-        //     console.log('saved to', savepath);
-        // } else {
-        //     await res.getDataAsString();
-        // }
     });
 
 

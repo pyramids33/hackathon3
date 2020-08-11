@@ -74,9 +74,13 @@ let tagData = asyncHandler(async function (req, res) {
         return payment.requirePayment(req, res, info);
     }
 
+    // todo: pg query stream rows
+
     let rows = await db.messages.tagPageData(
         req.message.query.tag, parseInt(req.message.query.from)||1, 50);
     
+    res.setHeader("content-type", "application/octet-stream");
+
     rows.forEach(function (row) {
         res.write(JSON.stringify(row)+'\n');
     });
