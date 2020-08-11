@@ -64,7 +64,7 @@ let tagData = asyncHandler(async function (req, res) {
     let info = await db.messages.tagPageInfo(req.message.query.tag);
     
     if (info === undefined) {
-        res.status(200).end();
+        res.status(200).json({ error: 'UNKNOWN_TAG'});
         return;
     }
 
@@ -95,7 +95,7 @@ let getAttachment = asyncHandler(async function (req, res) {
     let info = await db.messages.tagPageInfo(req.message.query.tag);
     
     if (info === undefined) {
-        res.status(200).end();
+        res.status(200).json({ error: 'UNKNOWN_TAG'});
         return;
     }
 
@@ -152,6 +152,7 @@ const handleMessage = asyncHandler(async function (req, res, next) {
             'tagdata': tagData,
             'taginfo': tagInfo,
             'getattachment': getAttachment,
+            'getinvoice': payment.getInvoice,
             'payinvoice': payment.payInvoice,
             'notifybroadcast': payment.notifyBroadcast
         };

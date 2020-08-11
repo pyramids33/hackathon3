@@ -6,6 +6,8 @@ const bsv = require('bsv');
 const bsvMessage = require('bsv/message');
 const os = require('os');
 const path = require('path');
+const readline = require('readline');  
+const crypto = require('crypto');
 
 const hashFile = require('../hashfile.js');
 const MessageSender = require('../sendmessage.js');
@@ -65,14 +67,19 @@ async function notifyBroadcast (db, txid, privkey) {
 
         let sendMessage = MessageSender(inv.server, privkey);
 
-        res = await sendMessage({
+        let res = await sendMessage({
             tag: 'api',
             subject: 'notifybroadcast',
             invoiceid: inv.invoiceid
         });
 
-        if (res.data && res.data.error) {
-            console.log('notifybroadcast', res.data);
+        if (res.statusCode !== 200 || res.json === undefined) {
+            console.log(res.data);
+            return;
+        }
+    
+        if (res.json.error) {
+            console.log('notifybroadcast', res.json);
             return;
         }
 
@@ -81,36 +88,8 @@ async function notifyBroadcast (db, txid, privkey) {
 }
 
 async function payInvoice (db, server, privkey, data) {
-    let invdata = JSON.parse(JSON.parse(data).payload);
-    let invoiceid = invdata.invoiceid;
-    let invoiceTx = new bsv.Transaction(invdata.tx);
 
-    let tx = db.send([], invoiceTx);
-    let txhex = tx.toString();
-    let txid = tx.id;
-
-    console.log('payinvoice', txid, invoiceid);
-
-    let sendMessage = MessageSender(server, privkey); 
-
-    res = await sendMessage({
-        tag: 'api',
-        subject: 'payinvoice',
-        invoiceid: invoiceid,
-        paymenttx: txhex,
-    });
-
-    //console.log(res.statusCode, res.data);
-
-    if (res.data && res.data.error) {
-        console.log('payinvoice', res.data);
-        return;
-    }
-
-    db.addTransaction(txhex, 'processed', { invoiceid, server });
-
-    await broadcastTx(db, txid);
-    await notifyBroadcast(db, txid, privkey);
+    
 }
 
 try { fs.mkdirSync(path.resolve(os.homedir(), 'tx')); } catch (err) { }
@@ -141,7 +120,6 @@ program.command('init')
 program.command('identity')
     .description('show identity')
     .action (async (cmd) => {
-        let dbfile = cmd.parent.target;
         let db = loadWallet(cmd.parent.target);
         let privkey = db.identityKey();
         console.log(privkey.toAddress().toString());
@@ -194,6 +172,7 @@ program.command('broadcast')
     .description('broadcast processed transactions')
     .option('-l, --list', 'list the transactions, dont broadcast them')
     .action (async (cmd) => {
+
         let db = loadWallet(cmd.parent.target);
         let txns = db.processedTransactions();
         
@@ -203,7 +182,11 @@ program.command('broadcast')
         }
 
         for (let i = 0; i < txns.length; i++) {
-            await broadcastTx(db,txns[i].txid);
+            try {
+                await broadcastTx(db, txns[i].txid);
+            } catch(error) {
+                console.log(error);
+            }
         }
     });
 
@@ -222,7 +205,11 @@ program.command('notifyinvoices')
         }
 
         for (let i = 0; i < txns.length; i++) {
-            await notifyBroadcast(db, txns[i].txid, privkey);
+            try {
+                await notifyBroadcast(db, txns[i].txid, privkey);
+            } catch(error) {
+                console.log(error);
+            }
         }
     });
 
@@ -251,7 +238,7 @@ program.command('download <txid>')
             db.addTransaction(txhex, 'broadcast');
         }
     });
-
+  
 program.command('taginfo <server> <tag>')
     .description('get tag info')
     .action(async (server, tag, cmd) => {
@@ -264,13 +251,68 @@ program.command('taginfo <server> <tag>')
             subject: 'taginfo',
             query: { tag }
         });
+
         console.log(res.data);
-        //console.log(JSON.parse(res.data));
+    });
+
+program.command('buyaccess <server> <tag>')
+    .description('pay for access to tag')
+    .action(async (server, tag, cmd) => {
+        let db = loadWallet(cmd.parent.target);
+        let privkey = db.identityKey();
+        let sendMessage = MessageSender(server, privkey);
+
+        let res = await sendMessage({
+            tag: 'api',
+            subject: 'getinvoice',
+            query: { tag }
+        });
+
+        if (res.statusCode !== 200 || res.json === undefined) {
+            console.log(res.data);
+            return;
+        }
+    
+        if (res.json.error) {
+            console.log(res.data);
+            return;
+        }
+
+        let invdata = JSON.parse(res.json.payload);
+        let invoiceid = invdata.invoiceid;
+        let invoiceTx = new bsv.Transaction(invdata.tx);
+    
+        let tx = db.send([], invoiceTx);
+        let txhex = tx.toString();
+        let txid = tx.id;
+    
+        console.log('payinvoice', txid, invoiceid);
+    
+        res = await sendMessage({
+            tag: 'api',
+            subject: 'payinvoice',
+            invoiceid: invoiceid,
+            paymenttx: txhex,
+        });
+    
+        if (res.statusCode !== 200 || res.json === undefined) {
+            console.log(res.data);
+            return;
+        }
+    
+        if (res.json.error) {
+            console.log('payinvoice', res.json);
+            return;
+        }
+    
+        db.addTransaction(txhex, 'processed', { invoiceid, server });
+    
+        await broadcastTx(db, txid);
+        await notifyBroadcast(db, txid, privkey);
     });
 
 program.command('tagdata <server> <tag> <from> <savepath>')
     .description('download data')
-    .option('-p, --pay', 'pay 402 response automatically')
     .action(async (server, tag, from, savepath, cmd) => {
 
         from = parseInt(from)||1;
@@ -288,45 +330,23 @@ program.command('tagdata <server> <tag> <from> <savepath>')
             }
         });
 
-        if (res.statusCode === 200) {
-            fs.writeFileSync(savepath, res.data);
-            console.log('saved to', savepath);
+        if (res.statusCode === 402) {
+            console.log(res.json);
             return;
         }
 
-        if (res.statusCode !== 402) {
-            console.log(res.statusCode, res.data);
+        if (res.statusCode === 200 && res.json && res.json.error) {
+            console.log(res.json);
             return;
         }
 
-        if (!cmd.pay) {
-            console.log(res.data);
-            return;
-        }
-
-        await payInvoice(db, server, privkey, res.data);
-
-        res = await sendMessage({
-            tag: 'api',
-            subject: 'tagdata',
-            query: {
-                tag: tag,
-                from: from
-            }
-        });
-
-        if (res.statusCode === 200) {
-            fs.writeFileSync(savepath, res.data);
-            console.log('saved to', savepath);
-        } else {
-            console.log(res.statusCode, res.data);
-        }
-
+        fs.writeFileSync(savepath, res.data);
+        console.log('saved to', savepath);
+        return;
     });
 
 program.command('getattachment <server> <tag> <index> <savepath>')
     .description('download message attachment')
-    .option('-p, --pay', 'pay 402 response automatically')
     .action(async (server, tag, index, savepath, cmd) => {
 
         let db = loadWallet(cmd.parent.target);
@@ -344,46 +364,47 @@ program.command('getattachment <server> <tag> <index> <savepath>')
             }
         }, null, null, null, true);
 
-        if (res.headers['content-type'] === 'application/octet-stream') {
+        if (res.statusCode === 200 && res.headers['content-type'] === 'application/octet-stream') {
             await res.writeDataToStream(ws);
             console.log('saved to', savepath);
-        } else {
-            await res.getDataAsString();
-        }
-
-        if (res.statusCode === 200) {
-            console.log(res.statusCode, res.data);
             return;
-        }
+        } 
+        
+        await res.getDataAsString();
+        console.log(res.data);
 
-        if (res.statusCode !== 402) {
-            console.log(res.statusCode, res.data);
-            return;
-        }
+        // if (res.statusCode === 200) {
+        //     console.log(res.statusCode, res.data);
+        //     return;
+        // }
 
-        if (!cmd.pay) {
-            console.log(res.data);
-            return;
-        }
+        // if (res.statusCode !== 402) {
+        //     console.log(res.statusCode, res.data);
+        //     return;
+        // }
 
-        await payInvoice(db, server, privkey, res.data);
+        // if (!cmd.pay) {
+        //     console.log(res.data);
+        //     return;
+        // }
 
-        res = await sendMessage({
-            tag: 'api',
-            subject: 'getattachment',
-            query: {
-                tag: tag,
-                index: index
-            }
-        }, null, null, null, true);
+        // await payInvoice(db, server, privkey, res.data);
 
-        if (res.headers['content-type'] === 'application/octet-stream') {
-            await res.writeDataToStream(ws);
-            console.log('saved to', savepath);
-        } else {
-            await res.getDataAsString();
-        }
+        // res = await sendMessage({
+        //     tag: 'api',
+        //     subject: 'getattachment',
+        //     query: {
+        //         tag: tag,
+        //         index: index
+        //     }
+        // }, null, null, null, true);
 
+        // if (res.headers['content-type'] === 'application/octet-stream') {
+        //     await res.writeDataToStream(ws);
+        //     console.log('saved to', savepath);
+        // } else {
+        //     await res.getDataAsString();
+        // }
     });
 
 
@@ -419,9 +440,7 @@ program.command('sendmessage <server> <jsonfile> [attachment]')
         console.log(res.data);
     });
 
-const readline = require('readline');  
-const crypto = require('crypto');
-const hash = require('bsv/lib/crypto/hash');
+
 
 program.command('displaymessages <nldjsonfile>')
     .description('print out messages from a saved NLD json file')
@@ -453,7 +472,7 @@ program.command('displaymessages <nldjsonfile>')
             // Check Hash and Signature of Message
             // TagHash = sha256(TagHash + MsgHash)
             //
-            
+
             let msghash = crypto.createHash('sha256');
             msghash.update(msgbuf);
             msghash = msghash.digest('hex');

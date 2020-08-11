@@ -8,18 +8,21 @@ const asyncHandler = require('./asynchandler.js');
 
 let paymailClient = new PaymailClient();
 
-let requirePayment = async function (req, res, taginfo) {
+let getInvoice = asyncHandler(async function (req, res) {
+    let { db, config } = req.app.get('context');
 
-    let { db, config, jsonEnvelope } = req.app.get('context');
-
-    res.status(402);
-    res.set("Content-Type", 'application/json');
+    let taginfo = await db.messages.tagPageInfo(req.message.query.tag);
+    
+    if (taginfo === undefined) {
+        res.status(200).json({ error: 'UNKNOWN_TAG'});
+        return;
+    }
 
     let invoiceid = moment().valueOf().toString() + Math.random().toFixed(10).slice(2);
 
     // create unsigned tx for invoice
     let tx = new bsv.Transaction();
-    
+
     await Promise.all(
         config.paymentOuts.map(async function (item) {
             if (item.paymail) {              
@@ -64,6 +67,12 @@ let requirePayment = async function (req, res, taginfo) {
     });
 
     res.json(signed);
+    return;
+});
+
+let requirePayment = async function (req, res, taginfo) {
+    res.status(402);
+    res.json({ error: 'PAYMENT_REQUIRED', description: 'send getinvoice message to begin payment.', taginfo });
     return;
 };
 
@@ -143,6 +152,7 @@ let notifyBroadcast = asyncHandler(async function (req, res, next) {
 
 module.exports = {
     requirePayment,
+    getInvoice,
     payInvoice,
     notifyBroadcast
 };

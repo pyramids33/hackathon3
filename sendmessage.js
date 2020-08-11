@@ -11,6 +11,11 @@ function MessageSender (url, privkey) {
                 res.on('data', (chunk) => chunks.push(chunk))
                 res.on('end', function () {
                     res.data = Buffer.concat(chunks).toString();
+                    if (res.headers['content-type'].startsWith('application/json')) {
+                        try {
+                            res.json = JSON.parse(res.data);
+                        } catch (err) {}
+                    }
                     resolve(res);
                 });
             });
