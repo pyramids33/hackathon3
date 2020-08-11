@@ -9,7 +9,8 @@ const asyncHandler = require('./asynchandler.js');
 let paymailClient = new PaymailClient();
 
 let getInvoice = asyncHandler(async function (req, res) {
-    let { db, config } = req.app.get('context');
+    
+    let { db, config, jsonEnvelope } = req.app.get('context');
 
     let taginfo = await db.messages.tagPageInfo(req.message.query.tag);
     

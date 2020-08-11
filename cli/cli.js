@@ -295,20 +295,15 @@ program.command('buyaccess <server> <tag>')
             paymenttx: txhex,
         });
     
-        if (res.statusCode !== 200 || res.json === undefined) {
+        if (res.statusCode !== 200 || res.json === undefined || res.json.error) {
             console.log(res.data);
             return;
         }
+
+        //db.addTransaction(txhex, 'processed', { invoiceid, server });
     
-        if (res.json.error) {
-            console.log('payinvoice', res.json);
-            return;
-        }
-    
-        db.addTransaction(txhex, 'processed', { invoiceid, server });
-    
-        await broadcastTx(db, txid);
-        await notifyBroadcast(db, txid, privkey);
+        //await broadcastTx(db, txid);
+        //await notifyBroadcast(db, txid, privkey);
     });
 
 program.command('tagdata <server> <tag> <from> <savepath>')
@@ -330,13 +325,8 @@ program.command('tagdata <server> <tag> <from> <savepath>')
             }
         });
 
-        if (res.statusCode === 402) {
-            console.log(res.json);
-            return;
-        }
-
-        if (res.statusCode === 200 && res.json && res.json.error) {
-            console.log(res.json);
+        if (res.statusCode !== 200 || (res.json && res.json.error)) {
+            console.log(res.data);
             return;
         }
 
