@@ -276,7 +276,7 @@ function WalletDb (filename) {
                 changeOut = changeOut ? changeOut.satoshis : 0;
             }
 
-            console.log(output.satoshis, tx.getFee(), tx.inputAmount, tx.outputAmount, tx.getFee()+tx.outputAmount, changeOut);
+            //console.log(output.satoshis, tx.getFee(), tx.inputAmount, tx.outputAmount, tx.getFee()+tx.outputAmount, changeOut);
             
             if (tx.inputAmount >= tx.getFee()+tx.outputAmount) {
                 break;

@@ -48,7 +48,7 @@
 <script src='https://unpkg.com/bsv@0.30.0/bsv.min.js'></script>
 <script>
 $(function () {
-
+    var siloURL = 'https://silo.paywall.vip';
     var $mb = $('#moneybutton');
     var $mbsender = $('#sendermb');
 
@@ -118,7 +118,7 @@ $(function () {
         formdata.append('sig',sig);
 
         $.ajax({
-            url: 'http://localhost:6767',
+            url: siloURL,
             data: formdata,
             cache: false,
             contentType: false,

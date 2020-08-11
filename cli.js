@@ -59,7 +59,7 @@ async function notifyBroadcast (db, txid, privkey) {
 
     if (inv && inv.server > '' && inv.notified === null && inv.status === 'broadcast') {
 
-        console.log('notify', txid, inv);
+        console.log('notifybroadcast', txid, inv);
 
         let sendMessage = MessageSender(inv.server, privkey);
 
@@ -70,7 +70,7 @@ async function notifyBroadcast (db, txid, privkey) {
         });
 
         if (res.data && res.data.error) {
-            console.log(res.statusCode, res.data);
+            console.log('notifybroadcast', res.data);
             return;
         }
 
@@ -87,6 +87,8 @@ async function payInvoice (db, server, privkey, data) {
     let txhex = tx.toString();
     let txid = tx.id;
 
+    console.log('payinvoice', txid, inv);
+
     let sendMessage = MessageSender(server, privkey); 
 
     res = await sendMessage({
@@ -96,10 +98,10 @@ async function payInvoice (db, server, privkey, data) {
         paymenttx: txhex,
     });
 
-    console.log(res.statusCode, res.data);
+    //console.log(res.statusCode, res.data);
 
-    if (res.data.error) {
-        console.log(res.data);
+    if (res.data && res.data.error) {
+        console.log('payinvoice', res.data);
         return;
     }
 
@@ -251,8 +253,8 @@ program.command('taginfo <server> <tag>')
             subject: 'taginfo',
             query: { tag }
         });
-
-        console.log(JSON.parse(res.data));
+        console.log(res.data);
+        //console.log(JSON.parse(res.data));
     });
 
 program.command('tagdata <server> <tag> [from]')
