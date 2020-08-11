@@ -6,7 +6,7 @@ function JSONEnveloper(privkey) {
         let sig = new bsvMessage(message).sign(privkey);
         return {
             payload: message,
-            sig: sig.toString('hex'),
+            sig: sig,
             publicKey: privkey.toPublicKey().toString(),
             encoding: 'UTF-8',
             mimetype: 'application/json'

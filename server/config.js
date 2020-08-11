@@ -12,8 +12,8 @@ let config = {
     host: 'localhost',
     port: 6767,
     env: 'dev',
-    tempPath: path.resolve(__dirname, '../data/temp/'),
-    storagePath: path.resolve(__dirname, '../data/storage/'),
+    tempPath: path.resolve(__dirname, '../../data/temp/'),
+    storagePath: path.resolve(__dirname, '../../data/storage/'),
     mapiUrl: 'https://www.ddpurse.com/openapi/mapi/',
     mapiToken: '561b756d12572020ea9a104c3441b71790acbbce95a6ddbf7e0630971af9424b',
     signingKey: 'L3gZFJgxBFReLt58Jm2A5ejNkiFeZdrpr8b1FQKYs9wijTS7PagJ',
@@ -23,6 +23,7 @@ let config = {
     },
     permissions: [
         [ '*', 'api', '*' ],
+        [ '1HUgdMT5HCUhc2sVipfhg7qppsCYb8zVuY', 'testtag', '*'],
         [ '1HML3oox9YQCjFnoStwXULYAiUBxm2G6tw', 'testtag', 'testsubject' ],
         [ '1HML3oox9YQCjFnoStwXULYAiUBxm2G6tw', 'testtag', 'testattach' ],
         [ '17rGQ4A3NAkhtbwZBCvNjEzfMtkJz9dTGv', 'forms', '*' ]

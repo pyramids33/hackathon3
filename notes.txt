@@ -7,14 +7,12 @@ todo
     .configure recipients
     .server sign data
     .json-envelope
-    dl attachment
+    .dl attachment
 
-example site (moneybutton)
-    login/logout
-    send messages
-    view messages
+.example site (moneybutton)
+    .send messages
+    .view messages
 
-
-documentation
+.documentation
 video demo
 github account

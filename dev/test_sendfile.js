@@ -1,9 +1,7 @@
 const bsv = require('bsv');
-const axios = require('axios');
 const fs = require('fs');
-const path = require('path');
-const MessageSender = require('./sendmessage.js');
-const hashFile = require('./hashfile.js');
+const MessageSender = require('../sendmessage.js');
+const hashFile = require('../hashfile.js');
 
 let url = 'http://localhost:6767/';
 
@@ -30,8 +28,8 @@ let sendMessage = MessageSender(url, privkey);
 
 (async function () {
     try {
-        let hash = await hashFile('sha256', './sysarch.jpg');
-        let stream = fs.createReadStream('./sysarch.jpg');
+        let hash = await hashFile('sha256', '../sysarch.jpg');
+        let stream = fs.createReadStream('../sysarch.jpg');
         
         let res = await sendMessage({
             tag: 'testtag',

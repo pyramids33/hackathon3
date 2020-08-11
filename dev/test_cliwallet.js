@@ -3,14 +3,13 @@ const moment = require('moment');
 const sqlite3 = require('better-sqlite3');
 const axios = require('axios');
 const fs = require('fs');
-const config = require('./config.js');
 
-if (process.argv.length > 2) {
-    Object.assign(config, JSON.parse(fs.readFileSync(process.argv[2])));
-}
-
-console.log('env', process.env.NODE_ENV||'dev');
-console.log('config', process.argv[2]||'default');
+// const config = require('./config.js');
+// if (process.argv.length > 2) {
+//     Object.assign(config, JSON.parse(fs.readFileSync(process.argv[2])));
+// }
+// console.log('env', process.env.NODE_ENV||'dev');
+// console.log('config', process.argv[2]||'default');
 
 function WalletDb (filename) {
 
@@ -181,7 +180,7 @@ function WalletDb (filename) {
 
 (async function () {
     try {
-        let dbfile = './test_data/test_wallet.db';
+        let dbfile = '../test_data/test_wallet.db';
         fs.unlinkSync(dbfile);
 
         let db = WalletDb(dbfile);
@@ -294,7 +293,7 @@ function WalletDb (filename) {
         
         for (let i = 0; i < txids.length; i++) {
             let txid = txids[i];
-            let txfile = './test_data/'+txid;
+            let txfile = '../test_data/'+txid;
 
             if (!fs.existsSync(txfile)) {
                 let res = await axios.get('https://api.whatsonchain.com/v1/bsv/main/tx/'+txid+'/hex');

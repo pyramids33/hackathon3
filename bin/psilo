@@ -1,0 +1,7 @@
+#!/usr/bin/env node
+let program = require('../cli/cli.js');
+program.parseAsync(process.argv)
+    .catch(function (error) {
+        console.log(error);
+    });
+    

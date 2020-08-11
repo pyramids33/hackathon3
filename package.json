@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
+  "bin": { "psilo": "./bin/psilo" },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "serve": "npx nodemon server.js testconfig.json"
+    "serve": "npx nodemon server.js ../testconfig.json"
   },
   "keywords": [],
   "author": "Tim Middleton",

@@ -158,6 +158,8 @@ const handleMessage = asyncHandler(async function (req, res, next) {
 
         if (req.message.subject && actions[req.message.subject]) {
             return actions[req.message.subject](req, res, next);
+        } else {
+            res.status(200).json({})
         }
     } else {
         res.status(200).json({})

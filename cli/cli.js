@@ -3,10 +3,12 @@ const axios = require('axios');
 const fs = require('fs');
 const commander = require('commander');
 const bsv = require('bsv');
+const bsvMessage = require('bsv/message');
 const os = require('os');
 const path = require('path');
 
-const MessageSender = require('./sendmessage.js');
+const hashFile = require('../hashfile.js');
+const MessageSender = require('../sendmessage.js');
 const WalletDb = require('./cliwalletdb.js');
 
 function loadWallet (dbfile) {
@@ -87,7 +89,7 @@ async function payInvoice (db, server, privkey, data) {
     let txhex = tx.toString();
     let txid = tx.id;
 
-    console.log('payinvoice', txid, inv);
+    console.log('payinvoice', txid, invoiceid);
 
     let sendMessage = MessageSender(server, privkey); 
 
@@ -134,6 +136,15 @@ program.command('init')
             let newKey = bsv.HDPrivateKey.fromRandom();
             db.addHDKey(newKey.toString(), moment().toISOString());
         }
+    });
+
+program.command('identity')
+    .description('show identity')
+    .action (async (cmd) => {
+        let dbfile = cmd.parent.target;
+        let db = loadWallet(cmd.parent.target);
+        let privkey = db.identityKey();
+        console.log(privkey.toAddress().toString());
     });
 
 program.command('balance')
@@ -257,10 +268,10 @@ program.command('taginfo <server> <tag>')
         //console.log(JSON.parse(res.data));
     });
 
-program.command('tagdata <server> <tag> [from]')
+program.command('tagdata <server> <tag> <from> <savepath>')
     .description('download data')
     .option('-p, --pay', 'pay 402 response automatically')
-    .action(async (server, tag, from, cmd) => {
+    .action(async (server, tag, from, savepath, cmd) => {
 
         from = parseInt(from)||1;
 
@@ -278,7 +289,8 @@ program.command('tagdata <server> <tag> [from]')
         });
 
         if (res.statusCode === 200) {
-            console.log(res.data);
+            fs.writeFileSync(savepath, res.data);
+            console.log('saved to', savepath);
             return;
         }
 
@@ -304,7 +316,8 @@ program.command('tagdata <server> <tag> [from]')
         });
 
         if (res.statusCode === 200) {
-            console.log(res.data);
+            fs.writeFileSync(savepath, res.data);
+            console.log('saved to', savepath);
         } else {
             console.log(res.statusCode, res.data);
         }
@@ -373,8 +386,99 @@ program.command('getattachment <server> <tag> <index> <savepath>')
 
     });
 
-program.parseAsync(process.argv)
-    .catch(function (error) {
-        console.log(error);
+
+
+program.command('sendmessage <server> <jsonfile> [attachment]')
+    .description('send a message')
+    .action(async (server, jsonfile, attachment, cmd) => {
+        let db = loadWallet(cmd.parent.target);
+        let privkey = db.identityKey();
+        let sendMessage = MessageSender(server, privkey);
+        
+        let obj = JSON.parse(fs.readFileSync(jsonfile));
+
+        if (!obj.tag || !obj.subject) {
+            console.log('Missing tag or subject');
+            return;
+        }
+
+        let fileStream; 
+
+        if (attachment) {
+            obj.filehash = await hashFile('sha256', attachment, 'hex');
+            obj.filename = path.basename(attachment);
+
+            fileStream = fs.createReadStream(attachment);
+        }
+
+        function progress (bytesWritten, done) {
+            console.log('uploaded ', bytesWritten, ' bytes');
+        }
+
+        let res = await sendMessage(obj, fileStream, progress, 3000);
+        console.log(res.data);
     });
-    
+
+const readline = require('readline');  
+const crypto = require('crypto');
+const hash = require('bsv/lib/crypto/hash');
+
+program.command('displaymessages <nldjsonfile>')
+    .description('print out messages from a saved NLD json file')
+    .action(async (nldjsonfile, cmd) => {
+        
+        const rl = readline.createInterface({
+            input: fs.createReadStream(nldjsonfile),
+            output: process.stdout,
+            terminal: false
+        });
+
+        let taghash;
+
+        rl.on('line', function (line) {
+            let lineArray = JSON.parse(line);
+            
+            let lineObj = {
+                tag: lineArray[1],
+                index: lineArray[2],
+                taghash: lineArray[6],
+                sig: lineArray[7]
+            };
+
+            let msgbuf = Buffer.from(lineArray[8],'hex');
+            
+            lineObj.messageObj = JSON.parse(msgbuf.toString('utf-8'));
+            
+            //
+            // Check Hash and Signature of Message
+            // TagHash = sha256(TagHash + MsgHash)
+            //
+            
+            let msghash = crypto.createHash('sha256');
+            msghash.update(msgbuf);
+            msghash = msghash.digest('hex');
+            
+            if (taghash) {
+                let hash = crypto.createHash('sha256');
+                hash.update(Buffer.from(taghash, 'hex'));
+                hash.update(Buffer.from(msghash, 'hex'));
+                taghash = hash.digest('hex');    
+            } else {
+                taghash = msghash;
+            }
+
+            lineObj.hashCheck = taghash;
+            lineObj.hashCheckResult = taghash === lineObj.taghash ? 'OK' : 'FAILED';
+            
+            let base64sig = Buffer.from(lineArray[7],'hex').toString('base64');
+            let validSig = new bsvMessage(msgbuf).verify(lineObj.messageObj.sender, base64sig);
+            
+            lineObj.sigCheck = validSig;
+
+            console.log(lineObj);
+        });
+
+    });
+
+
+module.exports = program;

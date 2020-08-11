@@ -1,14 +1,10 @@
 const Transactor = require('./transactor.js');
-const { pluckRow, pluckValue, paramCSV } = require('./pgutil.js');
-
-const WalletDb = require('./walletdb.js');
 const MessageDb = require('./messagedb.js');
 const PaymentDb = require('./paymentdb.js');
 
 function GetDatabase (pool) {
 
     let db = {
-        wallet: WalletDb(pool),
         messages: MessageDb(pool),
         payments: PaymentDb(pool)
     };
@@ -42,6 +38,5 @@ function GetDatabase (pool) {
 
 module.exports = {
     GetDatabase,
-    Transactor,
-    WalletDb
+    Transactor
 }

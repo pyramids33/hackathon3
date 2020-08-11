@@ -2,7 +2,7 @@ const bsv = require('bsv');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
-const MessageSender = require('./sendmessage.js');
+const MessageSender = require('../sendmessage.js');
 
 let url = 'http://localhost:6767/';
 
