@@ -391,6 +391,9 @@ Some of these files were brought in from another project, memadat.space (online 
 4. sendmessage.js (modified)
 5. asynchandler.js
 
+## Demo Server
+
+I have an instance of the server running at https://silo.paywall.vip
 
 ## References
 
