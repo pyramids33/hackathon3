@@ -31,21 +31,18 @@
         This method takes a few swipes, so it should really use IMB, or moneybutton could implement 
         this protocol as a single swipe on a '402' button type.
 
-        This is not necessarily the best way to use it though, as you would normally purchase, 
-        store, and process these messages from multiple sources into some other format like a database or html before displaying to users.
-        This is more about automated systems that collect data and sell it to each other.
-
-        But there could be use cases that involve a Javascript apps automatically downloading and displaying data.
+        Automated systems that collect data and sell it to each other.
+        Use cases that involve a Javascript apps automatically downloading and displaying data.
     </p>
     <input type="hidden" id="sender" value="">
     <input type="hidden" id="paymail" value="">
     <input type="hidden" id="invoiceid" value="">
     <div id="sendermb"></div>
     <div id="requestmb"></div>
+    <div id="invoicemb"></div>
     <div id="paymentmb"></div>
     <div id="uploadmb"></div>
     <div id="notifymb"></div>
-    <div id="requestmb2"></div>
     <table id="datatable">
         <tr><td>messageid</td><td>tag</td><td>index</td><td>subject</td><td>sender</td><td>time</td><td>hash</td></tr>
     </table>
@@ -89,7 +86,7 @@ $(function () {
                 formdata.append('sig', cryptoOperations[0].value);
 
                 $.ajax({
-                    url: 'http://localhost:6767',
+                    url: 'https://silo.paywall.vip',
                     data: formdata,
                     cache: false,
                     contentType: false,
@@ -112,10 +109,11 @@ $(function () {
 
     var $mbsender = $('#sendermb');
     var $mbrequest = $('#requestmb');
-    var $mbrequest2 = $('#requestmb2');
+    var $mbinvoice = $('#invoicemb');
     var $mbpayment = $('#paymentmb');
     var $mbupload = $('#uploadmb');
     var $mbnotify = $('#notifymb');
+
 
     $('#theform').prop('disabled', true);
 
@@ -141,7 +139,6 @@ $(function () {
     });
 
     function prepDataRequest () {
-
         sendMessage($mbrequest[0], 'request data', {
             subject: 'tagdata',
             tag: 'api',
@@ -153,33 +150,53 @@ $(function () {
     }
 
     function handleDataRequestResponse (xhr,data) {
-        
         if (xhr.status == 402) {
-            handle402(xhr.responseJSON);
+            handle402();
         } else {
             console.log(xhr,data);
             var lines = xhr.split('\n');
             $.each(lines, function (index, item) {
                 if (item > ''){
-                    var tblrow = $('<tr/>');
                     var rowdata = JSON.parse(item);
+                    var tblrow1 = $('<tr/>');
+                    
                     $.each(rowdata, function (index, item) {
-                        var td = $('<td/>', { text: item.toString() });
-                        tblrow.append(td);
+                        if (index <= 6) {
+                            var td = $('<td/>', { text: item.toString() });
+                            tblrow1.append(td);
+                        }
                     });
-                    $('#datatable').append(tblrow);
+
+                    //var tblrow2 = $('<tr/>');
+                    //var td = $('<td/>', { colspan: 7 });
+                    //td.html(rowdata[7] + '<br>' + rowdata[8]);
+                    //tblrow2.append(td);
+
+                    $('#datatable').append(tblrow1);
+                    //$('#datatable').append(tblrow2);
                 }
             })
         }
     }
 
-    function handle402 (data) {
-        var payload = JSON.parse(data.payload);
+    function handle402 () {
         $mbrequest.text('402 Payment Required');
         $mbrequest.removeAttr('style');
-        $mbrequest.append($('<pre/>', { text: JSON.stringify(payload,null,2) }));
-        $('#invoiceid').val(payload.invoiceid);
 
+        sendMessage($mbinvoice[0], 'get invoice', {
+            subject: 'getinvoice',
+            tag: 'api',
+            query: {
+                tag: 'forms'
+            }
+        }, handleInvoice)
+    }
+
+    function handleInvoice (data) {
+        $mbinvoice.removeAttr('style');
+        var payload = JSON.parse(data.payload);
+
+        $('#invoiceid').val(payload.invoiceid);
         var outputs = [];
         var tx = bsv.Transaction(payload.tx);
         tx.outputs.forEach(function (item) {
@@ -235,16 +252,8 @@ $(function () {
     }
 
     function handleNotified (xhr) {
-        $mbnotify.remove();
+        $mbnotify.text('payment complete. refresh to view data.');
         console.log('notified', xhr);
-        sendMessage($mbrequest2[0], 'request data', {
-            subject: 'tagdata',
-            tag: 'api',
-            query: {
-                tag: 'forms',
-                from: 1
-            }
-        }, handleDataRequestResponse)
     }
 
 });

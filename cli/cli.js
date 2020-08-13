@@ -144,8 +144,24 @@ program.command('send <to> <amount>')
     .option('-a, --analyse', 'show changes')
     .option('-p, --process', 'update the wallet with the tx')
     .action (async (to,amount,cmd) => {
+        
+        amount = parseInt(amount)||0;
+        
+        if (amount === 0) {
+            console.log('invalid amount');
+            return;
+        }
+
         let db = loadWallet(cmd.parent.target);
         let tx = db.send([[to, amount]]);
+
+        console.log('in:', tx.inputAmount, 'out:', tx.outputAmount, 'fee:', tx.getFee());
+
+        if (tx.inputAmount < tx.outputAmount+tx.getFee()) {
+            console.log('error: not enough funds. max send is ' + (tx.outputAmount-tx.getFee()).toString());
+            return;
+        }
+
         let txhex = tx.toString();
         console.log(txhex);
         
@@ -156,11 +172,12 @@ program.command('send <to> <amount>')
 
         if (cmd.process) {
             db.addTransaction(txhex);
+            console.log('tx processed. now run the broadcast command');
         }
 
-        if (cmd.broadcast) {
-            await broadcastTx(db, tx.id);
-        }
+        //if (cmd.broadcast) {
+        //    await broadcastTx(db, tx.id);
+        //}
     });
 
 
@@ -284,18 +301,18 @@ program.command('buyaccess <server> <tag>')
             return;
         }
     
-
         let invdata = JSON.parse(res.json.payload);
         let invoiceid = invdata.invoiceid;
         let invoiceTx = new bsv.Transaction(invdata.tx);
-    
+        let txcost = invoiceTx.outputAmount;
+
         let tx = db.send([], invoiceTx);
 
         console.log({
             purpose: invdata.purpose,
             taginfo: invdata.taghash,
             invoiceid: invoiceid,
-            txcost: tx.inputAmount
+            txcost: txcost + invoiceTx.getFee()
         });
 
         if (cmd.pay === undefined) {
