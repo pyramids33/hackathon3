@@ -4,6 +4,8 @@
 This project is an API for collecting, storing and selling data for BSV micropayments, 
 with a focus on automated machine to machine interactions.
 
+Tim Middleton 2020
+
 ## Project Background
 
 This project was created in response to the Bitcoin Association BSV Hackathon 2020. One of the
