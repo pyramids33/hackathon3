@@ -1,6 +1,7 @@
 const sqlite3 = require('better-sqlite3');
 const bsv = require('bsv');
 const moment = require('moment');
+const CustomInput = require('./custominput.js');
 
 function WalletDb (filename) {
 
@@ -133,7 +134,10 @@ function WalletDb (filename) {
     }
 
     function getAddress (address) {
-        return psAddressWithKey.get(address);
+        let info = psAddressWithKey.get(address);
+        info.hdKey = bsv.HDPrivateKey.fromString(info.xprv);
+        info.privateKey = info.hdKey.deriveChild(info.n,true).privateKey;
+        return info;
     }
 
     function totalUnspent () {
@@ -172,6 +176,14 @@ function WalletDb (filename) {
             if (output.script.isPublicKeyHashOut() && isKnownAddress(output.script.toAddress().toString())) {
                 psAddUtxo.run(tx.id, index, output.satoshis);
             }
+            if (CustomInput.IsOutputScript(output.script)) {
+                let publicKey = CustomInput.PublicKeyFromOutputScript(output.script);
+                //let hash = CustomInput.Hash256FromOutputScript(output.script).toString('hex');
+
+                if (isKnownAddress(publicKey.toAddress().toString())) {
+                    psAddUtxo.run(tx.id, index, output.satoshis);
+                }
+            }
         });
 
         tx.inputs.forEach(function (input, index) { 
@@ -197,8 +209,17 @@ function WalletDb (filename) {
 
         tx.outputs.forEach(function (output, index) {
             if (output.script.isPublicKeyHashOut() && isKnownAddress(output.script.toAddress().toString())) {
-                utxos.push({ txid: tx.id, index, amount: output.satoshis });
+                utxos.push({ txid: tx.id, index, amount: output.satoshis, type: 'PKH' });
                 addedBalance += output.satoshis;
+            }
+
+            if (CustomInput.IsOutputScript(output.script)) {
+                let publicKey = CustomInput.PublicKeyFromOutputScript(output.script);
+                let hash = CustomInput.Hash256FromOutputScript(output.script).toString('hex');
+
+                if (isKnownAddress(publicKey.toAddress().toString())) {
+                    utxos.push({ txid: tx.id, index, amount: output.satoshis, type: 'CustomInput', hash });
+                }
             }
         });
 
@@ -211,7 +232,7 @@ function WalletDb (filename) {
         });
 
         return {
-            utxos, stxos, addedBalance, spentBalance
+            txid: tx.id, utxos, stxos, addedBalance, spentBalance
         }
     }
 

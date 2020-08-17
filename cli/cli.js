@@ -251,7 +251,9 @@ program.command('download <txid>')
             db.addTransaction(txhex, 'broadcast');
         }
     });
-  
+
+
+
 program.command('taginfo <server> <tag>')
     .description('get tag info')
     .action(async (server, tag, cmd) => {
@@ -495,6 +497,210 @@ program.command('displaymessages <nldjsonfile>')
             console.log(lineObj);
         });
 
+    });
+
+
+program.command('transaction')
+    .description('import a transaction')
+    .option('-f, --file <filepath>', 'from file')
+    .option('-d, --download <txid>', 'download transaction')
+    .option('-a, --analyse', 'show changes')
+    .option('-h, --hex', 'show hex')
+    .option('-p, --process', 'update the wallet with the tx')
+    .action (async (cmd) => {
+
+        let db = loadWallet(cmd.parent.target);
+
+        let txfile;
+        let status = 'processed';
+
+        if (cmd.file) {
+            txfile = cmd.file;
+        } else if (cmd.download) {
+            let txid = cmd.download;
+            txfile = path.resolve(os.homedir(), 'tx', txid);
+            
+            if (!fs.existsSync(txfile)) {
+                let res = await axios.get('https://api.whatsonchain.com/v1/bsv/main/tx/'+txid+'/hex');
+                fs.writeFileSync(txfile, Buffer.from(res.data,'hex'));
+            }
+            status = 'broadcast';
+        }
+
+        let txhex = fs.readFileSync(txfile).toString('hex');
+
+        if (cmd.analyse) {
+            let res = db.analyseTransaction(txhex);
+            console.log(res);
+        }
+
+        if (cmd.hex) {
+            console.log(txhex);
+        }
+
+        if (cmd.process) {
+            db.addTransaction(txhex, status);
+        }
+    });  
+
+
+const Output = bsv.Transaction.Output;
+const BufferReader = bsv.encoding.BufferReader;
+const CustomInput = require('./custominput.js');
+const Signature = bsv.Transaction.Signature;
+// hashtx (file) -> tx
+// fundtx (tx) -> output
+// spendtx (file, tx, [outputs]) -> tx2
+program.command('hashtx <filepath> <amount> [savepath]')
+    .description('send a message')
+    .action(async (filepath, amount, savepath, cmd) => {
+        let db = loadWallet(cmd.parent.target);
+
+        amount = parseInt(amount)||0;
+        
+        if (amount === 0) {
+            console.log('invalid amount');
+            return;
+        }
+
+        let filehash = await hashFile('sha256', filepath, 'hex');
+
+        let address = db.newAddress();
+        let info = db.getAddress(address);
+        let pubkey = info.privateKey.publicKey;
+        let tx = new bsv.Transaction();
+
+        var script = CustomInput.BuildCustomOutputScript(
+            Buffer.from(filehash,'hex'), pubkey.toBuffer());
+
+        let output = new Output({ script, satoshis: amount });
+
+        tx.addOutput(output);
+
+        if (savepath) {
+            fs.writeFileSync(savepath, tx.toBuffer());
+        } else {
+            console.log(tx.toString());
+        }
+    });
+
+program.command('fundtx <txpath> <amount1> <amount2> [savetx] [saveinput1] [saveinput2]')
+    .description('send a message')
+    .action(async (txpath, amount1, amount2, savetx, saveinput1, saveinput2, cmd) => {
+        let db = loadWallet(cmd.parent.target);
+
+        amount1 = parseInt(amount1)||0;
+        amount2 = parseInt(amount2)||0;
+        if (amount1 === 0 || amount2 === 0) {
+            console.log('invalid amount');
+            return;
+        }
+        
+        let address1 = db.newAddress();
+        let address2 = db.newAddress();
+        let tx1 = db.send([[address1, amount1], [address2, amount2]]);
+
+        let info1 = db.getAddress(address1);
+        let info2 = db.getAddress(address2);
+        let txbuf = fs.readFileSync(txpath);
+        let tx2 = new bsv.Transaction(txbuf);
+
+        tx2.addInput(new bsv.Transaction.Input.PublicKeyHash({
+            output: tx1.outputs[0],
+            prevTxId: tx1.id,
+            outputIndex: 0,
+            script: bsv.Script.empty()
+        }));
+
+        tx2.addInput(new bsv.Transaction.Input.PublicKeyHash({
+            output: tx1.outputs[1],
+            prevTxId: tx1.id,
+            outputIndex: 1,
+            script: bsv.Script.empty()
+        }));
+
+        tx2.sign(info1.privateKey, (Signature.SIGHASH_ALL | Signature.ANYONECANPAY));
+        tx2.sign(info2.privateKey, (Signature.SIGHASH_ALL | Signature.ANYONECANPAY));
+
+        if (savetx) {
+            fs.writeFileSync(savetx, tx1.toBuffer());
+            console.log('saved to ', savetx);
+        } else {
+            console.log(tx1.toString());
+        }
+
+        if (saveinput1) {
+            fs.writeFileSync(saveinput1, JSON.stringify(tx2.inputs[0]));
+            console.log('saved to ', saveinput1);
+        } else {
+            console.log(tx2.inputs[0].toBufferWriter().toBuffer().toString());
+        }
+
+        if (saveinput2) {
+            fs.writeFileSync(saveinput2, JSON.stringify(tx2.inputs[1]));
+            console.log('saved to ', saveinput2);
+        } else {
+            console.log(tx2.inputs[1].toBufferWriter().toBuffer().toString());
+        }
+    });
+
+
+
+program.command('spendtx <txpath> <filepath>')
+    .option('-i, --inputs <inputs...>','transaction inputs')
+    .option('-s1, --savetx1 <filepath>','savetx1')
+    .option('-s2, --savetx2 <filepath>','savetx2')
+    .description('send a message')
+    .action(async (txpath, filepath, cmd) => {
+        let db = loadWallet(cmd.parent.target);
+
+        let txbuf = fs.readFileSync(txpath);
+        let tx = new bsv.Transaction(txbuf);
+
+        cmd.inputs.forEach(function (item, index) {
+            let obj = JSON.parse(fs.readFileSync(item).toString());
+            let input = new bsv.Transaction.Input.PublicKeyHash(obj);
+            tx.addInput(input);
+        });
+
+        let hashOut = tx.outputs[0];
+        let scriptPubKey = new bsv.PublicKey(hashOut.script.chunks[3].buf);
+        let scriptAddr = scriptPubKey.toAddress().toString();
+        let addrInfo = db.getAddress(scriptAddr);
+        let changeAddress = db.newAddress();
+
+        let tx2 = new bsv.Transaction();
+
+        let input = new CustomInput({
+            output: hashOut,
+            prevTxId: tx.id,
+            outputIndex: 0,
+            script: bsv.Script.empty()
+        });
+
+        input.filebuf = fs.readFileSync(filepath);
+        input.filehash = await hashFile('sha256', filepath, 'hex');
+
+        tx2.addInput(input);
+        tx2.change(changeAddress);
+        tx2.sign(addrInfo.privateKey);
+
+        console.log(tx.inputAmount, tx.outputAmount, tx.getFee());
+        console.log(tx2.inputAmount, tx2.outputAmount, tx2.getFee());
+
+        if (cmd.savetx1) {
+            fs.writeFileSync(cmd.savetx1, tx.toBuffer());
+            console.log('saved to ', cmd.savetx1);
+        } else {
+            console.log(tx.toString());
+        }
+
+        if (cmd.savetx2) {
+            fs.writeFileSync(cmd.savetx2, tx2.toBuffer());
+            console.log('saved to ', cmd.savetx2);
+        } else {
+            console.log(tx2.toString());
+        }
     });
 
 
