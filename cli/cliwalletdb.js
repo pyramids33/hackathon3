@@ -3,6 +3,33 @@ const bsv = require('bsv');
 const moment = require('moment');
 const CustomInput = require('./custominput.js');
 
+// custom (file,amount)
+//     ...maketx
+//     if start
+//         custom_insert (address,filename,filehash,pubkey,amount,status,rawtx,escrowtxid,resolvedtxid)
+//
+// escrow_custom (address,inputs)
+//     addinputs(inputs)
+//     
+// solve_custom (address,file)
+//     spendtx (escrowtx, file)
+//
+// process
+//     custom = getcustom(output.pubkey)
+//     if custom.status = 'pending'
+//         transactions.insert (tx,'processed',escrowtx)
+//         custom.status('escrowed',escrowtxid)
+//     
+//     custom = getcustom(status == 'escrowed' and escrowtxid)
+//     if custom
+//         transactions.insert (tx,'processed',spendtx)
+//         custom.status('resolved',resolvetxid)
+//
+//
+// customutxo
+//     txid,vout,amount,pubkey,escrowtxid,resolvedtxid
+//
+
 function WalletDb (filename) {
 
     let db = new sqlite3(filename);
@@ -29,6 +56,19 @@ function WalletDb (filename) {
     db.prepare('create table if not exists invoicetxns (txid text, invoiceid text, server text, notified text)').run();
     db.prepare('create unique index if not exists invoicetxns_txid on invoicetxns(txid)').run();
     db.prepare('create index if not exists invoicetxns_notified on invoicetxns(notified)').run();
+
+    db.prepare(`
+        create table if not exists customtx (
+            address text primary key, pubkey text, filehash text, amount integer, status text, 
+            escrowtxid text, resolvedtxid text, rawtx blob)`).run();
+
+    db.prepare('create index if not exists customtx_status on customtx(status)').run();
+
+    db.prepare(`
+        create table if not exists rtxos (
+            txid text, vout integer, amount integer, address text)`).run();
+
+    db.prepare('create unique index if not exists rtxos_txid_vout on rtxos(txid, vout)').run();
 
     const psAddTransaction = db.prepare(`insert into transactions (txid, status, rawtx) values (?,?,?)`);
     const psUpdateTransactionStatus = db.prepare('update transactions set status = ? where txid = ?');
@@ -66,9 +106,7 @@ function WalletDb (filename) {
     const psAddUtxo = db.prepare('insert into utxos (txid, vout, amount) values (?, ?, ?)');
     const psNextUtxo = db.prepare('select rowid,* from utxos where rowid > ? order by rowid limit 1');
     const psDeleteUtxo = db.prepare('delete from utxos where txid = ? and vout = ?');
-    const psAddStxo = db.prepare(`
-        insert into stxos (txid, vout, amount, spenttxid) 
-        select txid,vout,amount,? from utxos where txid = ? and vout = ?`);
+    const psAddStxo = db.prepare('insert into stxos (txid, vout, amount, spenttxid) values (?,?,?,?)');
 
     const psUtxosToSpendAmount = db.prepare(`
         select * from utxos 
@@ -81,6 +119,48 @@ function WalletDb (filename) {
 
     const psTotalUnspent = db.prepare('select sum(amount) as totalAmount, count(rowid) as numUtxos from utxos');
     const psUtxos = db.prepare('select * from utxos order by rowid');
+
+    const psAddCustom = db.prepare('insert into customtx (address,pubkey,filehash,amount,status,rawtx) values (?,?,?,?,?,?) on conflict do nothing');   
+    const psAddRtxo = db.prepare(`insert into rtxos (txid, vout, amount, address) values (?,?,?,?)`); 
+    const psDeleteRtxo = db.prepare('delete from rtxos where txid = ? and vout = ?');  
+    const psReservedTxo = db.prepare(`
+        select rtxos.*, customtx.status, customtx.escrowtxid, customtx.resolvedtxid
+        from rtxos 
+            left join customtx on rtxos.address = customtx.address 
+        where txid = ? and vout = ?`);
+
+    const psGetCustom = db.prepare(`select address,pubkey,filehash,amount,status,rawtx,escrowtxid from customtx where address = ?`);
+    const psGetCustoms = db.prepare(`select * from customtx where status in ('pending','escrowed')`);
+    
+    const psGetCustomEscrow = db.prepare(`
+        select address,pubkey,filehash,amount,status 
+        from customtx 
+        where status = 'escrowed' and escrowtxid = ?`);
+
+    const psGetRtxos = db.prepare(`
+        select rtxos.*, customtx.status, customtx.escrowtxid, customtx.resolvedtxid
+        from rtxos 
+            left join customtx on rtxos.address = customtx.address 
+        where customtx.status in ('pending')`);
+
+    const psCustomEscrowed = db.prepare(`
+        update customtx set 
+            status = 'escrowed', 
+            escrowtxid = ? 
+        where address = ?
+    `);
+
+    const psCustomSolved = db.prepare(`
+        update customtx set 
+            status = 'solved', 
+            resolvedtxid = ? 
+        where address = ?
+    `);
+    let cancelCustom = db.transaction(function () {
+        // insert into utxos (txid,vout,amount) select txid,vout,amount from rtxos where address = ?
+        // delete from rtxos where address = ?
+        // delete from customtx where address = ?
+    })
 
     function getHDKey (id) {
         if (id === undefined) {
@@ -166,6 +246,39 @@ function WalletDb (filename) {
         return xprv.deriveChild("m/44'/0'/0'/0/0/0").privateKey;
     }
 
+    function addCustom ({ address, pubkey, filehash, amount, status, txbuf }) {
+        status = status||'pending';
+        return psAddCustom.run(address, pubkey, filehash, amount, status, txbuf);
+    }
+
+    function addRtxo ({ txid, vout, amount, address}) {
+        return psAddRtxo.run(txid, vout, amount, address);
+    }
+    function deleteRtxo (txid, vout) {
+        return psDeleteRtxo.run(txid, vout);
+    }
+    function reservedTxo (txid, vout) {
+        return psReservedTxo.get(txid, vout);
+    }
+    function getCustom (address) {
+        return psGetCustom.get(address);
+    }
+    function getCustoms () {
+        return psGetCustoms.all();
+    }
+    function getCustomEscrow (txid) {
+        return psGetCustomEscrow.get(txid);
+    }
+    function customEscrowed (address, escrowtxid) {
+        return psCustomEscrowed.run(escrowtxid, address);
+    }
+    function customSolved (address, resolvedtxid) {
+        return psCustomSolved.run(resolvedtxid, address);
+    }
+    function getRtxos () {
+        return psGetRtxos.all();
+    }
+
     let addTransaction = db.transaction(function(txhex, status, invoice) {
         
         status = status||'processed';
@@ -173,28 +286,48 @@ function WalletDb (filename) {
         let tx = new bsv.Transaction(txhex);
 
         tx.outputs.forEach(function (output, index) {
-            if (output.script.isPublicKeyHashOut() && isKnownAddress(output.script.toAddress().toString())) {
+
+            let reserved = reservedTxo(tx.id, index);
+
+            if (reserved !== undefined) {
+                return;
+            }
+
+            if (output.script.isPublicKeyHashOut()
+                && isKnownAddress(output.script.toAddress().toString())) { 
                 psAddUtxo.run(tx.id, index, output.satoshis);
             }
+
             if (CustomInput.IsOutputScript(output.script)) {
                 let publicKey = CustomInput.PublicKeyFromOutputScript(output.script);
-                //let hash = CustomInput.Hash256FromOutputScript(output.script).toString('hex');
+                let custom = getCustom(publicKey.toAddress().toString('hex'));
 
-                if (isKnownAddress(publicKey.toAddress().toString())) {
-                    psAddUtxo.run(tx.id, index, output.satoshis);
+                if (custom) {
+                    customEscrowed(custom.address, tx.id);
                 }
             }
         });
 
         tx.inputs.forEach(function (input, index) { 
-            psAddStxo.run(tx.id, input.prevTxId.toString('hex'), input.outputIndex);
-            psDeleteUtxo.run(input.prevTxId.toString('hex'), input.outputIndex);
+            let custom = getCustomEscrow(input.prevTxId.toString('hex'));
+            
+            if (custom) {
+                customSolved(custom.address, tx.id);
+                return;
+            }
+
+            let utxo = getUtxo(input.prevTxId.toString('hex'), input.outputIndex);
+            
+            if (utxo) {
+                psAddStxo.run(input.prevTxId.toString('hex'), input.outputIndex, utxo.amount, tx.id);
+                psDeleteUtxo.run(input.prevTxId.toString('hex'), input.outputIndex);
+            }
         });
 
         if (invoice) {
             psAddInvoiceTxn.run(tx.id, invoice.invoiceid, invoice.server);
         }
-    
+
         psAddTransaction.run(tx.id, status, Buffer.from(txhex,'hex'));
     });
 
@@ -203,11 +336,24 @@ function WalletDb (filename) {
 
         let utxos = [];
         let stxos = [];
+        let rtxos = [];
+        let customs = [];
 
         let addedBalance = 0;
         let spentBalance = 0;
+        let reservedBalance = 0;
+        let customEscrowBalance = 0;
 
         tx.outputs.forEach(function (output, index) {
+
+            let reserved = reservedTxo(tx.id, index);
+
+            if (reserved !== undefined) {
+                rtxos.push({ txid: tx.id, index, amount: output.satoshis, address: reserved.address });
+                reservedBalance += output.satoshis;
+                return;
+            }
+
             if (output.script.isPublicKeyHashOut() && isKnownAddress(output.script.toAddress().toString())) {
                 utxos.push({ txid: tx.id, index, amount: output.satoshis, type: 'PKH' });
                 addedBalance += output.satoshis;
@@ -215,10 +361,11 @@ function WalletDb (filename) {
 
             if (CustomInput.IsOutputScript(output.script)) {
                 let publicKey = CustomInput.PublicKeyFromOutputScript(output.script);
-                let hash = CustomInput.Hash256FromOutputScript(output.script).toString('hex');
-
-                if (isKnownAddress(publicKey.toAddress().toString())) {
-                    utxos.push({ txid: tx.id, index, amount: output.satoshis, type: 'CustomInput', hash });
+                let address = publicKey.toAddress().toString('hex');
+                let custom = getCustom(address);
+                if (custom) {
+                    customs.push({ txid: tx.id, index, amount: output.satoshis, address, status: 'escrowed' });
+                    customEscrowBalance += output.satoshis;
                 }
             }
         });
@@ -229,10 +376,14 @@ function WalletDb (filename) {
                 stxos.push(utxo);
                 spentBalance += utxo.amount;
             }
+            let custom = getCustomEscrow(input.prevTxId.toString('hex'));
+            if (custom) {
+                customs.push({ txid: tx.id, index, amount: custom.amount, pubkey: custom.pubkey, status: 'solved' });
+            }
         });
 
         return {
-            txid: tx.id, utxos, stxos, addedBalance, spentBalance
+            txid: tx.id, utxos, stxos, rtxos, customs, reservedBalance, addedBalance, spentBalance, customEscrowBalance
         }
     }
 
@@ -333,7 +484,15 @@ function WalletDb (filename) {
         identityKey,
         setInvoiceNotified,
         invoiceTxnById,
-        invoicesToNotify
+        invoicesToNotify,
+        addCustom,
+        addRtxo,
+        getCustom,
+        getCustoms,
+        getCustomEscrow,
+        getRtxos,
+        customEscrowed,
+        customSolved
     }
 }
 
