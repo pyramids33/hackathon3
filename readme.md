@@ -399,6 +399,7 @@ viewdata.html implements 402 Payment using moneybutton swipes.
 
 The CLI includes the functionality to create a custom transaction.  
 This custom_start command creates a transaction with an output script that requires a file and public key to spend.  
+See the demo video of this function in the github repo: cli_customtx_demo.m4v  
 
 ```
 Custom Script  
