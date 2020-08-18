@@ -367,12 +367,56 @@ getattachment <server> <tag> <index> <savepath>  download message attachment
 sendmessage <server> <jsonfile> [attachment]     send a message
 displaymessages <nldjsonfile>                    print out messages from a saved NLD json file
 
+transaction [options]                                         import a transaction
+  -f, --file <filepath>  from file
+  -d, --download <txid>  download transaction
+  -a, --analyse          show changes
+  -h, --hex              show hex
+  -p, --process          update the wallet with the tx
+
+custom_start [options] <filepath> <amount>                    start a custom output for file
+  -s, --save             save the transaction to resolve later
+  -f, --file <filepath>  write to file
+
+custom_fund [options] <txpath> <amount> [savetx] [saveinput]  fund a signed input for a custom transaction
+  -s, --save             save the transaction to resolve later
+
+custom_escrow [options] <address>                             escrow the funds into the custom output
+  -i, --inputs <inputs...>  transaction inputs
+  -s, --savetx <filepath>   savetx
+
+custom_solve [options] <address> <filepath>                   solve the custom transaction
+  -s, --savetx <filepath>  savetx
+
 ```
 
 ## Site
 The site folder contains two example html files that work standalone.  
 form1.html demonstrates how a website can use a form and moneybutton to upload data to profitsilo.  
 viewdata.html implements 402 Payment using moneybutton swipes.  
+
+## Custom Transaction
+
+The CLI includes the functionality to create a custom transaction.  
+This custom_start command creates a transaction with an output script that requires a file and public key to spend.  
+
+```
+Custom Script  
+scriptPubKey: OP_SHA256 <filehash> OP_EQUALVERIFY <publicKey> OP_CHECKSIG
+scriptSig: <sig> <filedata>
+```
+
+The custom_fund command is used to create a signed input to the custom output. The input is signed with flags
+(SIGHASH_ALL|ANYONECANSPEND). This means that multiple partys can fund the transaction.
+When this transaction is broadcast, the funds are escrowed in the custom script. To spend the escrowed funds, the person
+that possesses the file has to include it in the scriptSig, so that the people who funded the transaction can retrieve the file.
+
+This is supposed to be for a 'group buy' of a new release file.
+
+There are some current limitations with this approach: 
+
+1. The scriptSig size is limited to 10kb. 
+2. Once the funds are escrowed into the custom script, its possible the creator of the script may never release the file. 
 
 
 ## Use Cases

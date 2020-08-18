@@ -604,7 +604,7 @@ const Signature = bsv.crypto.Signature;
 program.command('custom_start <filepath> <amount>')
     .option('-s, --save', 'save the transaction to resolve later')
     .option('-f, --file <filepath>', 'write to file')
-    .description('send a message')
+    .description('start a custom output for file')
     .action(async (filepath, amount, cmd) => {
         let db = loadWallet(cmd.parent.target);
 
@@ -645,7 +645,7 @@ program.command('custom_start <filepath> <amount>')
 
 program.command('custom_fund <txpath> <amount> [savetx] [saveinput] ')
     .option('-s, --save', 'save the transaction to resolve later')
-    .description('send a message')
+    .description('fund a signed input for a custom transaction')
     .action(async (txpath, amount, savetx, saveinput, cmd) => {
         let db = loadWallet(cmd.parent.target);
 
@@ -701,7 +701,7 @@ program.command('custom_fund <txpath> <amount> [savetx] [saveinput] ')
 program.command('custom_escrow <address> ')
     .option('-i, --inputs <inputs...>','transaction inputs')
     .option('-s, --savetx <filepath>','savetx')
-    .description('send a message')
+    .description('escrow the funds into the custom output')
     .action(async (address, cmd) => {
 
         let db = loadWallet(cmd.parent.target);
@@ -732,7 +732,7 @@ program.command('custom_escrow <address> ')
 
 program.command('custom_solve <address> <filepath>')
     .option('-s, --savetx <filepath>','savetx')
-    .description('send a message')
+    .description('solve the custom transaction')
     .action(async (address, filepath, cmd) => {
         let db = loadWallet(cmd.parent.target);
 
