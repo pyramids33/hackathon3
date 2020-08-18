@@ -412,7 +412,8 @@ The custom_fund command is used to create a signed input to the custom output. T
 When this transaction is broadcast, the funds are escrowed in the custom script. To spend the escrowed funds, the person
 that possesses the file has to include it in the scriptSig, so that the people who funded the transaction can retrieve the file.
 
-This is supposed to be for a 'group buy' of a new release file.
+This is supposed to be for a 'group buy' of a new release file. The participants can use the server and send/listen to the 
+same tag until the transaction is completed.
 
 There are some current limitations with this approach: 
 
