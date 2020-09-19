@@ -1,3 +1,5 @@
+*** the wallet is not tested much so use it with caution ***
+
 # Profit $ilo
 ### let data = profit;
 
