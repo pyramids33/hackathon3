@@ -1,4 +1,4 @@
-*** the wallet is not tested much so use it with caution ***
+*** this is a proof of concept only ***
 
 # Profit $ilo
 ### let data = profit;
@@ -7,6 +7,10 @@ This project is an API for collecting, storing and selling data for BSV micropay
 with a focus on automated machine to machine interactions.
 
 Tim Middleton 2020
+
+[Video Presentation](https://youtu.be/FD_BfzkxXUg?t=2872)  
+[Video Demo 1](https://vimeo.com/453504264)  
+[Video Demo 2](https://vimeo.com/447378147)  
 
 ## Project Background
 
@@ -20,14 +24,11 @@ Notably, the uneven distribution of costs, data privacy concerns, the lack of a 
 uncertainty of how to do it effectively (Urban, 2018, pp7-9).
 
 This project attempts to address all of those problems. This system stores data as named, ordered lists of signed messages 
-which require payment to access. The design may seem similar to the concept of event sourcing, 
-but is not designed for tracking every internal state change. It is about: 
+which require payment to access.
 
-- Asynchronous notifications for other systems 
-- Allowing the data silo to do what it does best without interference
 - Publishing data and documents tailored to the recipients
-- Committing to a hash, being able to prove the existence of data at a point in time
-- Creating mutual benefit by connecting silos (Satell, 2017)
+- Hash commitments prove the existence of data at a point in time
+- Creating mutual benefit by connecting data silos (Satell, 2017)
 
 ## System Architecture
 
@@ -441,9 +442,6 @@ Some of these files were brought in from another project, memadat.space (online 
 4. sendmessage.js (modified)
 5. asynchandler.js
 
-## Demo Server
-
-I have an instance of the server running at https://silo.paywall.vip
 
 ## References
 
